@@ -1,32 +1,40 @@
 import os
 from datetime import datetime, timedelta
-from passlib.context import CryptContext
 from jose import JWTError, jwt
-from dotenv import load_dotenv
+from fastapi import Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
 
-load_dotenv()
-SECRET_KEY = os.getenv("SECRET_KEY", "devsecret")
-ALGORITHM = os.getenv("ALGORITHM", "HS256")
-ACCESS_EXPIRE = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+SECRET_KEY = os.getenv("SECRET_KEY", "secret")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# OAuth2 scheme to read "Authorization: Bearer <token>"
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
-def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
 
-def verify_password(plain, hashed) -> bool:
-    return pwd_context.verify(plain, hashed)
-
-def create_access_token(data: dict, expires_delta: int = None):
+# ---------------- TOKEN CREATION ---------------- #
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=(expires_delta or ACCESS_EXPIRE))
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def decode_token(token: str):
+
+# ---------------- TOKEN VALIDATION ---------------- #
+def get_current_token(token: str = Depends(oauth2_scheme)):
+    """
+    Extract user info from JWT. Used as a dependency in routes.
+    """
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate token",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload is None:
+            raise credentials_exception
         return payload
     except JWTError:
-        return None
+        raise credentials_exception
