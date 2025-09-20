@@ -6,13 +6,13 @@ export default function Login(){
 
   async function doLogin(e){
     e.preventDefault();
-    const resp = await fetch("http://localhost:8000/auth/login", {
+    const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || "http://localhost:8000"}/auth/login`, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify({username, password})
     });
-    if (resp.ok) {
-      const body = await resp.json();
+    if (res.ok) {
+      const body = await res.json();
       localStorage.setItem("token", body.access_token);
       window.location.href = "/dashboard";
     } else {

@@ -1,17 +1,18 @@
-from sqlmodel import SQLModel, Field, JSON
-from typing import Optional
-from datetime import datetime
+from sqlmodel import SQLModel, Field, Relationship
+from typing import Optional, List
 
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True)
     email: Optional[str] = None
-    password_hash: str
+    hashed_password: str
+
+    diagrams: List["Diagram"] = Relationship(back_populates="owner")
 
 class Diagram(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
-    owner_id: int = Field(index=True)
+    owner_id: int = Field(foreign_key="user.id", index=True)
     title: Optional[str] = ""
-    data: str  # JSON serialized string of canvas (fabric.js or custom)
-    thumbnail: Optional[str] = None  # base64 small preview optional
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    data: str  # serialized JSON
+    thumbnail: Optional[str] = None
+    owner: Optional[User] = Relationship(back_populates="diagrams")

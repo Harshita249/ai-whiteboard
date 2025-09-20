@@ -2,10 +2,9 @@ import React, {useRef, useEffect, useState} from "react";
 import { fabric } from "fabric";
 import Toolbar from "./Toolbar";
 
-const BACKEND_WS = "ws://localhost:8000/ws";
+const WS_BASE = (import.meta.env.VITE_BACKEND_URL || "http://localhost:8000").replace(/^http/, 'ws');
 
 export default function Whiteboard(){
-  const canvasRef = useRef(null);
   const fabricRef = useRef(null);
   const [tool, setTool] = useState("pen");
   const [color, setColor] = useState("#222222");
@@ -19,25 +18,22 @@ export default function Whiteboard(){
     c.setHeight(Math.min(window.innerHeight-180, 700));
     fabricRef.current = c;
 
-    // default brush
     c.freeDrawingBrush.width = strokeWidth;
     c.freeDrawingBrush.color = color;
     c.isDrawingMode = true;
 
-    // on object created -> broadcast
     c.on('path:created', (opt) => {
       const obj = opt.path.toObject(['path','stroke','strokeWidth','fill']);
       sendMessage({type:'path:created', object: obj});
     });
 
     c.on('object:added', (opt) => {
-      if (opt.target && opt.target.__own) return; // avoid broadcasting objects we just added from network
+      if (opt.target && opt.target.__own) return;
       const obj = opt.target.toObject();
       sendMessage({type:'object:added', object: obj});
     });
 
-    // receive remote objects
-    wsRef.current = new WebSocket(`${BACKEND_WS}/${roomId}`);
+    wsRef.current = new WebSocket(`${WS_BASE}/ws/${roomId}`);
     wsRef.current.onopen = ()=>console.log("WS open");
     wsRef.current.onmessage = (ev) => {
       try {
@@ -47,7 +43,6 @@ export default function Whiteboard(){
     };
 
     window.addEventListener('resize', handleResize);
-
     return () => {
       wsRef.current && wsRef.current.close();
       c.dispose();
@@ -86,8 +81,7 @@ export default function Whiteboard(){
     const c = fabricRef.current;
     if (!c) return;
     if (msg.type === 'object:added') {
-      const obj = msg.object;
-      fabric.util.enlivenObjects([obj], function(objects) {
+      fabric.util.enlivenObjects([msg.object], function(objects) {
         objects.forEach(o => { o.__own = true; c.add(o); });
         c.renderAll();
       });
@@ -118,7 +112,6 @@ export default function Whiteboard(){
       c.add(t);
       sendMessage({type:'object:added', object: t.toObject()});
     } else if (type === 'arrow') {
-      // simple arrow using a line + triangle
       const line = new fabric.Line([10,10,210,10], { left: 100, top:100, stroke: color, strokeWidth });
       const tri = new fabric.Triangle({ left: 210, top: 8, width: 12, height: 20, fill: color });
       c.add(line, tri);
@@ -128,17 +121,14 @@ export default function Whiteboard(){
   }
 
   async function doAIClean(){
-    // grab canvas image
     const c = fabricRef.current;
     const dataUrl = c.toDataURL({format:'png', multiplier:1});
-    // send to backend /ai/clean as form-data file
     const blob = await (await fetch(dataUrl)).blob();
     const fd = new FormData();
     fd.append('file', blob, 'capture.png');
-    const res = await fetch("http://localhost:8000/ai/clean", { method: "POST", body: fd });
+    const res = await fetch(`${import.meta.env.VITE_BACKEND_URL || "http://localhost:8000"}/ai/clean`, { method: "POST", body: fd });
     const json = await res.json();
     if (json.success && json.shapes) {
-      // clear selection and add shapes
       json.shapes.forEach(s => {
         if (s.type === 'rect') {
           const r = new fabric.Rect({ left: s.left, top: s.top, width: s.width, height: s.height, fill: s.fill || 'rgba(0,0,0,0)', stroke: s.stroke || '#222', strokeWidth: s.strokeWidth || 2});
@@ -159,10 +149,9 @@ export default function Whiteboard(){
   async function handleSave(){
     const c = fabricRef.current;
     const json = JSON.stringify(c.toJSON(['selectable','originX','originY']));
-    // create thumbnail small image
     const thumb = c.toDataURL({ format:'png', multiplier: 0.3 });
     const token = localStorage.getItem('token');
-    await fetch("http://localhost:8000/diagrams", {
+    await fetch(`${import.meta.env.VITE_BACKEND_URL || "http://localhost:8000"}/diagrams`, {
       method: "POST",
       headers: {"Content-Type":"application/json", ...(token?{ "Authorization": `Bearer ${token}` }:{})},
       body: JSON.stringify({ title: "My Diagram", data: json, thumbnail: thumb })
@@ -176,7 +165,7 @@ export default function Whiteboard(){
         tool={tool} setTool={(t)=>{
           setTool(t);
           if (t === 'rect' || t === 'ellipse' || t === 'text' || t === 'arrow') {
-            addShapeOfType(t); // instant add
+            addShapeOfType(t);
             setTool('select');
           }
         }}

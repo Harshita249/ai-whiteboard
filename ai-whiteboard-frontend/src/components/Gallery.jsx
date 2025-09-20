@@ -3,7 +3,9 @@ import React, {useEffect, useState} from "react";
 export default function Gallery(){
   const [items,setItems] = useState([]);
   useEffect(()=>{
-    fetch("http://localhost:8000/diagrams").then(r=>r.json()).then(setItems);
+    const token = localStorage.getItem('token');
+    fetch(`${import.meta.env.VITE_BACKEND_URL || "http://localhost:8000"}/diagrams`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r=>r.json()).then(setItems).catch(()=>setItems([]));
   },[]);
   return (
     <aside className="gallery">

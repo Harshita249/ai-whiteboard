@@ -6,7 +6,6 @@ export default function Toolbar({tool, setTool, color, setColor, strokeWidth, se
       <div className="tool-row">
         <button className={tool==='select'?'active':''} onClick={()=>setTool('select')}>Select</button>
         <button className={tool==='pen'?'active':''} onClick={()=>setTool('pen')}>Pen</button>
-        <button className={tool==='eraser'?'active':''} onClick={()=>setTool('eraser')}>Eraser</button>
         <button className={tool==='rect'?'active':''} onClick={()=>setTool('rect')}>Rect</button>
         <button className={tool==='ellipse'?'active':''} onClick={()=>setTool('ellipse')}>Ellipse</button>
         <button className={tool==='arrow'?'active':''} onClick={()=>setTool('arrow')}>Arrow</button>

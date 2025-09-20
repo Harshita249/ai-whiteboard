@@ -6,15 +6,15 @@ class UserCreate(BaseModel):
     password: str
     email: Optional[str] = None
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
 class LoginRequest(BaseModel):
     username: str
     password: str
 
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
 class DiagramCreate(BaseModel):
     title: str
-    data: str  # JSON string
+    data: str
     thumbnail: Optional[str] = None
