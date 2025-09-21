@@ -1,16 +1,18 @@
-
-import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from .db import engine, Base
+from .db import engine, Base, AsyncSessionLocal
 from . import models, auth, gallery, ai_service
 from .ws_manager import manager
-from .schemas import UserCreate, Token, DiagramIn
+from .schemas import UserCreate, Token
 from sqlalchemy import select
-from .db import AsyncSessionLocal
+
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
 
 app = FastAPI(title="AI Whiteboard Backend")
 
+# --- Middleware ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,14 +21,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# --- Routers ---
 app.include_router(gallery.router)
 app.include_router(ai_service.router)
 
+# --- Startup DB ---
 @app.on_event("startup")
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+# --- Auth ---
 @app.post("/api/register")
 async def register(user: UserCreate):
     async with AsyncSessionLocal() as session:
@@ -49,6 +54,7 @@ async def login(user: UserCreate):
         token = auth.create_access_token({"sub": u.username})
         return {"access_token": token, "token_type": "bearer"}
 
+# --- WebSocket ---
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
     await manager.connect(room_id, websocket)
@@ -58,3 +64,16 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
             await manager.broadcast(room_id, data)
     except WebSocketDisconnect:
         manager.disconnect(room_id, websocket)
+
+# --- Serve React Frontend ---
+# Get absolute path to dist folder inside backend
+dist_dir = os.path.join(os.path.dirname(__file__), "..", "dist")
+
+app.mount("/assets", StaticFiles(directory=os.path.join(dist_dir, "assets")), name="assets")
+
+@app.get("/{full_path:path}")
+async def serve_react_app(full_path: str):
+    index_path = os.path.join(dist_dir, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"error": "index.html not found"}
