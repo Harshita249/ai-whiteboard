@@ -1,0 +1,14 @@
+{
+  "build": {
+    "backend": {
+      "root": "backend",
+      "buildCommand": "pip install -r requirements.txt",
+      "startCommand": "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    },
+    "frontend": {
+      "root": "frontend",
+      "buildCommand": "npm install && npm run build",
+      "publishDir": "dist"
+    }
+  }
+}
