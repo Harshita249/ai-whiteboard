@@ -1,24 +1,23 @@
-import React, {useEffect, useState} from "react";
 
+import React, {useEffect, useState} from 'react'
 export default function Gallery(){
-  const [items,setItems] = useState([]);
-  useEffect(()=>{
-    const token = localStorage.getItem('token');
-    const BACK = import.meta.env.VITE_BACKEND_URL || "";
-    fetch(`${BACK}/api/diagrams`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
-      .then(r=>r.json()).then(setItems).catch(()=>setItems([]));
-  },[]);
+  const [items,setItems]=useState([])
+  useEffect(()=>{ fetchGallery() },[])
+  async function fetchGallery(){
+    try{
+      const res = await fetch((import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000') + '/api/gallery/')
+      const data = await res.json(); setItems(data)
+    }catch(e){ console.error(e) }
+  }
   return (
-    <aside className="gallery">
-      <h3>Gallery</h3>
-      {items.length===0 && <div className="empty">No saved diagrams yet.</div>}
+    <div>
+      <h4 style={{color:'#6ee7b7'}}>Gallery</h4>
       {items.map(it=>(
-        <div key={it.id} className="thumb">
-          {it.thumbnail ? <img src={it.thumbnail} alt={it.title} /> :
-            <div className="placeholder">{it.title}</div>}
-          <div className="meta">{it.title}</div>
+        <div key={it.id} style={{background:'rgba(255,255,255,0.01)',borderRadius:8,padding:8,marginTop:8}}>
+          <div className='small'>{it.title}</div>
+          {it.data_json && (()=>{ try{const parsed=JSON.parse(it.data_json); if(parsed.png) return <img src={parsed.png} style={{width:'100%',borderRadius:6,marginTop:6}}/> }catch(e){return null}})()}
         </div>
       ))}
-    </aside>
-  );
+    </div>
+  )
 }

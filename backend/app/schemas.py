@@ -1,20 +1,15 @@
+
 from pydantic import BaseModel
 from typing import Optional
 
 class UserCreate(BaseModel):
     username: str
     password: str
-    email: Optional[str] = None
-
-class LoginRequest(BaseModel):
-    username: str
-    password: str
 
 class Token(BaseModel):
     access_token: str
-    token_type: str = "bearer"
+    token_type: str
 
-class DiagramCreate(BaseModel):
-    title: str
-    data: str
-    thumbnail: Optional[str] = None
+class DiagramIn(BaseModel):
+    title: Optional[str]
+    data_json: str

@@ -1,28 +1,12 @@
-// BACKEND (empty string means same origin -> single service deploy)
-export const BACKEND = import.meta.env.VITE_BACKEND_URL || "";
 
-function prefix(path) {
-  const base = BACKEND ? BACKEND.replace(/\/$/, "") : "";
-  return `${base}/api${path}`;
-}
+import axios from 'axios';
+const BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+const api = axios.create({ baseURL: BASE, timeout: 20000 });
 
-export async function postJson(path, payload, token=null) {
-  const res = await fetch(prefix(path), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { "Authorization": `Bearer ${token}` } : {})
-    },
-    body: JSON.stringify(payload)
-  });
-  return res;
-}
-
-export async function getJson(path, token=null) {
-  const res = await fetch(prefix(path), {
-    headers: {
-      ...(token ? { "Authorization": `Bearer ${token}` } : {})
-    }
-  });
-  return res;
-}
+export async function register(username,password){ return api.post('/api/register',{username,password}) }
+export async function login(username,password){ return api.post('/api/login',{username,password}) }
+export async function saveDiagram(data, token){ return api.post('/api/save', data, { headers: { Authorization: `Bearer ${token}` } }) }
+export async function listGallery(){ return api.get('/api/gallery/') }
+export async function getDiagram(id){ return api.get(`/api/gallery/${id}`) }
+export async function aiCleanup(data){ return api.post('/api/ai/cleanup', data) }
+export default api;
