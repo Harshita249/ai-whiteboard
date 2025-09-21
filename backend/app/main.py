@@ -1,152 +1,91 @@
 import os
-from fastapi import FastAPI, Depends, HTTPException, status
+import json
+import base64
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from sqlmodel import SQLModel, Session, create_engine, select
-from passlib.context import CryptContext
-from jose import JWTError, jwt
-from pydantic import BaseModel
-from datetime import datetime, timedelta
-from typing import Optional
+from typing import List
+from dotenv import load_dotenv
+from sqlmodel import Session
 
-# ======================================================
-# Config
-# ======================================================
-SECRET_KEY = os.getenv("SECRET_KEY", "supersecretkey")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./database.db")
+from .db import create_db_and_tables, get_session
+from . import models, schemas, crud, auth, ai_service, websocket_manager
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+load_dotenv()
+create_db_and_tables()
 
-# ======================================================
-# Models
-# ======================================================
-from sqlmodel import Field
+app = FastAPI(title="AI Whiteboard Backend")
 
-class User(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    username: str = Field(unique=True, index=True)
-    hashed_password: str
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-class Whiteboard(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    user_id: int = Field(foreign_key="user.id")
-    content: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+manager = websocket_manager.ConnectionManager()
 
-# ======================================================
-# Schemas
-# ======================================================
-class UserCreate(BaseModel):
-    username: str
-    password: str
+# ----------- API Routes -----------
+@app.post("/auth/register", response_model=dict)
+def register(u: schemas.UserCreate, session: Session = Depends(get_session)):
+    existing = session.exec(models.User.select().where(models.User.username == u.username)).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    user = crud.create_user(session, u.username, u.password, u.email)
+    return {"id": user.id, "username": user.username}
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str
+@app.post("/auth/login", response_model=schemas.Token)
+def login(payload: schemas.LoginRequest, session: Session = Depends(get_session)):
+    user = crud.authenticate_user(session, payload.username, payload.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    token = auth.create_access_token({"sub": user.username, "user_id": user.id})
+    return {"access_token": token, "token_type": "bearer"}
 
-class WhiteboardCreate(BaseModel):
-    content: str
+@app.post("/diagrams", response_model=dict)
+def save_diagram(payload: schemas.DiagramCreate, session: Session = Depends(get_session)):
+    owner_id = 1  # simplify demo
+    d = crud.create_diagram(session, owner_id=owner_id, title=payload.title, data=payload.data, thumbnail=payload.thumbnail)
+    return {"id": d.id, "title": d.title}
 
-# ======================================================
-# Auth Helpers
-# ======================================================
-def create_db_and_tables():
-    SQLModel.metadata.create_all(engine)
+@app.get("/diagrams", response_model=List[dict])
+def list_diagrams(session: Session = Depends(get_session)):
+    owner_id = 1
+    items = crud.list_diagrams_for_user(session, owner_id)
+    return [{"id": i.id, "title": i.title, "data": i.data, "thumbnail": i.thumbnail} for i in items]
 
-def get_session():
-    with Session(engine) as session:
-        yield session
+@app.post("/ai/clean")
+async def ai_clean(file: UploadFile = File(...)):
+    b = await file.read()
+    b64 = base64.b64encode(b).decode()
+    resp = ai_service.clean_diagram_from_base64(b64)
+    return resp
 
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
-def verify_password(plain, hashed):
-    return pwd_context.verify(plain, hashed)
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
-
-def get_current_user(token: str, session: Session = Depends(get_session)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
+@app.websocket("/ws/{room_id}")
+async def websocket_endpoint(websocket: WebSocket, room_id: str):
+    await manager.connect(room_id, websocket)
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-    user = session.exec(select(User).where(User.username == username)).first()
-    if user is None:
-        raise credentials_exception
-    return user
+        while True:
+            data = await websocket.receive_text()
+            try:
+                message = json.loads(data)
+            except:
+                message = {"type": "raw", "payload": data}
+            await manager.broadcast(room_id, message, exclude=websocket)
+    except WebSocketDisconnect:
+        manager.disconnect(room_id, websocket)
 
-# ======================================================
-# App Init
-# ======================================================
-app = FastAPI()
+# ----------- Serve Frontend -----------
+frontend_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.isdir(frontend_dir):
+    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
 
-@app.on_event("startup")
-def on_startup():
-    create_db_and_tables()
-
-# ======================================================
-# Auth Routes
-# ======================================================
-@app.post("/register", response_model=Token)
-def register(user: UserCreate, session: Session = Depends(get_session)):
-    db_user = session.exec(select(User).where(User.username == user.username)).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="Username already registered")
-    hashed = get_password_hash(user.password)
-    new_user = User(username=user.username, hashed_password=hashed)
-    session.add(new_user)
-    session.commit()
-    token = create_access_token({"sub": new_user.username})
-    return {"access_token": token, "token_type": "bearer"}
-
-@app.post("/login", response_model=Token)
-def login(user: UserCreate, session: Session = Depends(get_session)):
-    db_user = session.exec(select(User).where(User.username == user.username)).first()
-    if not db_user or not verify_password(user.password, db_user.hashed_password):
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    token = create_access_token({"sub": db_user.username})
-    return {"access_token": token, "token_type": "bearer"}
-
-# ======================================================
-# Whiteboard Routes
-# ======================================================
-@app.post("/save")
-def save_whiteboard(data: WhiteboardCreate, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
-    wb = Whiteboard(user_id=current_user.id, content=data.content)
-    session.add(wb)
-    session.commit()
-    return {"message": "Whiteboard saved!"}
-
-@app.get("/gallery")
-def get_gallery(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
-    boards = session.exec(select(Whiteboard).where(Whiteboard.user_id == current_user.id)).all()
-    return boards
-
-# ======================================================
-# Serve Frontend
-# ======================================================
-frontend_dist = os.path.join(os.path.dirname(__file__), "../../frontend/dist")
-if os.path.exists(frontend_dist):
-    app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="static")
-
-@app.get("/{full_path:path}")
-async def serve_react_app(full_path: str):
-    index_file = os.path.join(frontend_dist, "index.html")
-    if os.path.exists(index_file):
-        return FileResponse(index_file)
-    return {"message": "AI Whiteboard backend is running!"}
+@app.get("/")
+async def root():
+    index_path = os.path.join(frontend_dir, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return {"message": "Frontend not built yet"}
