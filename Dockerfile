@@ -14,30 +14,23 @@ WORKDIR /app
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# --- Frontend build ---
+# Frontend build
 COPY frontend ./frontend
 WORKDIR /app/frontend
-
-# Install all dependencies
 RUN npm install
-
-# Explicitly install vite globally
 RUN npm install -g vite
-
-# Build frontend with global vite
 RUN vite build
-
 
 # Copy backend and move frontend dist into it
 WORKDIR /app
 COPY backend ./backend
 RUN cp -r frontend/dist backend/dist
 
+# Set working dir for backend
 WORKDIR /app/backend
 
 # Expose port
 EXPOSE 8000
 
-# Start FastAPI
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "$PORT"]
-
+# Start FastAPI with Railway's injected $PORT
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port $PORT
