@@ -14,11 +14,19 @@ WORKDIR /app
 COPY backend/requirements.txt ./backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# Frontend build
+# --- Frontend build ---
 COPY frontend ./frontend
 WORKDIR /app/frontend
-RUN npm install --include=dev
-RUN npx vite build
+
+# Install all dependencies
+RUN npm install
+
+# Explicitly install vite globally
+RUN npm install -g vite
+
+# Build frontend with global vite
+RUN vite build
+
 
 # Copy backend and move frontend dist into it
 WORKDIR /app
