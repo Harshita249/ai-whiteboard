@@ -8,14 +8,14 @@ from sqlalchemy import select
 from .db import engine, Base, AsyncSessionLocal
 from . import models, auth, gallery, ai_service
 from .ws_manager import manager
-from .schemas import UserCreate, Token, DiagramIn
+from .schemas import UserCreate, Token
 
 app = FastAPI(title="AI Whiteboard Backend")
 
 # --- CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # allow all for now
+    allow_origins=["*"],  # allow all origins (adjust if needed)
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,12 +71,17 @@ async def ping():
     return {"ok": True}
 
 # --- React Frontend ---
-# Serve React frontend
-app.mount("/static", StaticFiles(directory="dist/assets"), name="static")
+# Serve static assets (from Vite build: dist/assets)
+app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
 
+# Serve index.html for all non-API routes (React Router fallback)
 @app.get("/{full_path:path}")
 async def serve_react_app(full_path: str):
+    # Avoid overriding API and WebSocket routes
     if full_path.startswith("api") or full_path.startswith("ws"):
-        return {"error": "Not Found"}  # don't override APIs
-    return FileResponse("dist/index.html")
+        raise HTTPException(status_code=404, detail="Not Found")
 
+    index_path = os.path.join("dist", "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    raise HTTPException(status_code=404, detail="index.html not found")
