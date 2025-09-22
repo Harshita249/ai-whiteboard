@@ -1,21 +1,21 @@
+import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from sqlalchemy import select
+
 from .db import engine, Base, AsyncSessionLocal
 from . import models, auth, gallery, ai_service
 from .ws_manager import manager
-from .schemas import UserCreate, Token
-from sqlalchemy import select
-
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-import os
+from .schemas import UserCreate, Token, DiagramIn
 
 app = FastAPI(title="AI Whiteboard Backend")
 
-# --- Middleware ---
+# --- CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # allow all for now
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,13 +25,13 @@ app.add_middleware(
 app.include_router(gallery.router)
 app.include_router(ai_service.router)
 
-# --- Startup DB ---
+# --- DB Startup ---
 @app.on_event("startup")
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-# --- Auth ---
+# --- Auth Routes ---
 @app.post("/api/register")
 async def register(user: UserCreate):
     async with AsyncSessionLocal() as session:
@@ -65,15 +65,17 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     except WebSocketDisconnect:
         manager.disconnect(room_id, websocket)
 
-# --- Serve React Frontend ---
-# Get absolute path to dist folder inside backend
-dist_dir = os.path.join(os.path.dirname(__file__), "..", "dist")
+# --- Health Check ---
+@app.get("/ping")
+async def ping():
+    return {"ok": True}
 
-app.mount("/assets", StaticFiles(directory=os.path.join(dist_dir, "assets")), name="assets")
+# --- React Frontend ---
+app.mount("/static", StaticFiles(directory="dist/assets"), name="static")
 
 @app.get("/{full_path:path}")
 async def serve_react_app(full_path: str):
-    index_path = os.path.join(dist_dir, "index.html")
+    index_path = os.path.join("dist", "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
     return {"error": "index.html not found"}

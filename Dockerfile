@@ -32,5 +32,6 @@ WORKDIR /app/backend
 # Expose port
 EXPOSE 8000
 
-# Start FastAPI with Railway's injected $PORT
+# Start FastAPI with Railway's dynamic PORT
+WORKDIR /app/backend
 CMD exec uvicorn app.main:app --host 0.0.0.0 --port $PORT

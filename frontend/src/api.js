@@ -1,12 +1,40 @@
+import axios from "axios";
 
-import axios from 'axios';
-const BASE = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-const api = axios.create({ baseURL: BASE, timeout: 20000 });
+// If env variable is set, use it; otherwise default to relative "/api"
+const BASE = import.meta.env.VITE_BACKEND_URL || "/api";
 
-export async function register(username,password){ return api.post('/api/register',{username,password}) }
-export async function login(username,password){ return api.post('/api/login',{username,password}) }
-export async function saveDiagram(data, token){ return api.post('/api/save', data, { headers: { Authorization: `Bearer ${token}` } }) }
-export async function listGallery(){ return api.get('/api/gallery/') }
-export async function getDiagram(id){ return api.get(`/api/gallery/${id}`) }
-export async function aiCleanup(data){ return api.post('/api/ai/cleanup', data) }
+const api = axios.create({
+  baseURL: BASE,
+  timeout: 20000,
+});
+
+// Auth APIs
+export async function register(username, password) {
+  return api.post("/register", { username, password });
+}
+
+export async function login(username, password) {
+  return api.post("/login", { username, password });
+}
+
+// Gallery APIs
+export async function saveDiagram(data, token) {
+  return api.post("/save", data, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export async function listGallery() {
+  return api.get("/gallery/");
+}
+
+export async function getDiagram(id) {
+  return api.get(`/gallery/${id}`);
+}
+
+// AI Service
+export async function aiCleanup(data) {
+  return api.post("/ai/cleanup", data);
+}
+
 export default api;
