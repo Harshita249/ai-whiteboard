@@ -1,4 +1,4 @@
-# Use Python 3.11 slim with latest security patches
+# Use Python 3.11 slim with security patches
 FROM python:3.11-slim-bookworm
 
 # Install Node.js for frontend build
@@ -17,7 +17,8 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 # Frontend build
 COPY frontend ./frontend
 WORKDIR /app/frontend
-RUN npm install && npm run build
+RUN npm install --include=dev
+RUN npx vite build
 
 # Copy backend and move frontend dist into it
 WORKDIR /app
