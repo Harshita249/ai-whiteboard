@@ -12,26 +12,26 @@ from .schemas import UserCreate, Token
 
 app = FastAPI(title="AI Whiteboard Backend")
 
-# --- CORS ---
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # allow all origins (adjust if needed)
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Routers ---
+# API routers
 app.include_router(gallery.router)
 app.include_router(ai_service.router)
 
-# --- DB Startup ---
+# DB startup
 @app.on_event("startup")
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-# --- Auth Routes ---
+# Auth
 @app.post("/api/register")
 async def register(user: UserCreate):
     async with AsyncSessionLocal() as session:
@@ -54,7 +54,7 @@ async def login(user: UserCreate):
         token = auth.create_access_token({"sub": u.username})
         return {"access_token": token, "token_type": "bearer"}
 
-# --- WebSocket ---
+# WebSocket
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
     await manager.connect(room_id, websocket)
@@ -65,23 +65,28 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     except WebSocketDisconnect:
         manager.disconnect(room_id, websocket)
 
-# --- Health Check ---
+# Health check
 @app.get("/ping")
 async def ping():
     return {"ok": True}
 
-# --- React Frontend ---
-# Serve static assets (from Vite build: dist/assets)
-app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+# --- Serve React build robustly ---
+# determine dist absolute path relative to this file
+THIS_DIR = os.path.dirname(__file__)
+DIST_DIR = os.path.abspath(os.path.join(THIS_DIR, "..", "dist"))
 
-# Serve index.html for all non-API routes (React Router fallback)
+# Serve built assets (Vite puts JS/CSS into dist/assets)
+assets_dir = os.path.join(DIST_DIR, "assets")
+if os.path.isdir(assets_dir):
+    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+# Fallback to index.html for all non-API and non-WS routes (SPA)
 @app.get("/{full_path:path}")
 async def serve_react_app(full_path: str):
-    # Avoid overriding API and WebSocket routes
-    if full_path.startswith("api") or full_path.startswith("ws"):
+    # avoid intercepting API/WebSocket routes
+    if full_path.startswith("api") or full_path.startswith("ws") or full_path.startswith("assets"):
         raise HTTPException(status_code=404, detail="Not Found")
-
-    index_path = os.path.join("dist", "index.html")
+    index_path = os.path.join(DIST_DIR, "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="index.html not found")
