@@ -71,10 +71,15 @@ async def ping():
     return {"ok": True}
 
 # --- React Frontend ---
+# Serve static files (JS/CSS) from React build
 app.mount("/static", StaticFiles(directory="dist/assets"), name="static")
 
+# Serve index.html for all non-API routes (React Router fallback)
 @app.get("/{full_path:path}")
 async def serve_react_app(full_path: str):
+    if full_path.startswith("api") or full_path.startswith("ws"):
+        # avoid catching API and WebSocket routes
+        return {"error": "Not Found"}
     index_path = os.path.join("dist", "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
