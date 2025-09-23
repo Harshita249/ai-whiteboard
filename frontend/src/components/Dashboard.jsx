@@ -1,30 +1,30 @@
+// frontend/src/components/Dashboard.jsx
+import React from "react";
+import Toolbar from "./Toolbar";
+import CanvasBoard from "./CanvasBoard";
+import Gallery from "./Gallery";
 
-import React from 'react'
-import Toolbar from './Toolbar'
-import CanvasBoard from './CanvasBoard'
-import Gallery from './Gallery'
-
-export default function Dashboard({ token, username, onLogout }){
+export default function Dashboard({ token, username, onLogout }) {
   return (
-    <div style={{display:'flex',flexDirection:'column',gap:12}}>
-      <div style={{display:'flex',justifyContent:'flex-end'}}>
-        <button className='btn' onClick={onLogout}>Logout</button>
-      </div>
-      <div className='workspace'>
-        <div className='toolbar'><Toolbar/></div>
-        <div className='board-wrap'>
-          <div className='board'>
-            <div style={{padding:8,display:'flex',justifyContent:'space-between',borderBottom:'1px solid #e6eef822'}}>
-              <div className='small'>Room: global</div>
-              <div className='small'>Tools: Pen • Shapes • Graphs • Gallery • AI Clean</div>
-            </div>
-            <div className='canvas-area'>
-              <CanvasBoard token={token} username={username}/>
-            </div>
+    <div className="dashboard-root" style={{ display: "flex", gap: 12, height: "100vh", boxSizing: "border-box" }}>
+      <Toolbar />
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", padding: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontWeight: 600, color: "#6ee7b7" }}>AI Whiteboard</div>
+          <div>
+            <span className="small">Signed in: {username}</span>
+            <button className="btn" style={{ marginLeft: 12 }} onClick={onLogout}>Logout</button>
           </div>
         </div>
-        <div className='right-panel'><Gallery token={token}/></div>
+
+        <div style={{ flex: 1, position: "relative", minHeight: 400, borderRadius: 8, overflow: "hidden", background: "linear-gradient(#ffffff,#ffffff)" }}>
+          <CanvasBoard token={token} username={username} />
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <Gallery token={token} />
+        </div>
       </div>
     </div>
-  )
+  );
 }
