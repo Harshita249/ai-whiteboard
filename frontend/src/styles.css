@@ -15,3 +15,69 @@ body{background:linear-gradient(180deg,#071025,#07163a);min-height:100vh;color:v
 .right-panel{width:260px;background:rgba(255,255,255,0.02);border-radius:10px;padding:12px;overflow:auto;height:520px}
 .small{font-size:12px;color:#94a3b8}
 @media (max-width:980px){.toolbar{flex-direction:row;width:100%;height:56px}.workspace{flex-direction:column}.board{width:100%;aspect-ratio:4/3}.right-panel{width:100%;height:auto}}
+/* --- Toolbar layout fixes --- */
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px;
+}
+
+@media (max-width: 768px) {
+  .toolbar {
+    flex-direction: row;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .toolbar button {
+    flex: 0 0 auto;
+  }
+}
+
+/* --- Tooltips for Toolbar Buttons --- */
+.tool-btn {
+  position: relative;
+  background: #1f2937;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.tool-btn:hover {
+  background: #374151;
+}
+
+.tool-btn .tooltip-text {
+  visibility: hidden;
+  width: max-content;
+  background-color: #111827;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 4px 8px;
+  position: absolute;
+  z-index: 1;
+  bottom: 120%; /* Show above button */
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.2s;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.tool-btn:hover .tooltip-text,
+.tool-btn:focus .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* On mobile (touch), show tooltip when button is focused */
+@media (hover: none) {
+  .tool-btn:focus .tooltip-text {
+    visibility: visible;
+    opacity: 1;
+  }
+}
