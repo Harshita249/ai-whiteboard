@@ -1,5 +1,6 @@
 # Base image with Python 3.11 and Debian bookworm for stable security patches
-FROM python:3.11-slim-bookworm
+FROM python:3.11
+
 
 # Install Node 18 and build tools
 RUN apt-get update && apt-get upgrade -y \
