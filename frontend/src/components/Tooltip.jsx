@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+// frontend/src/components/Tooltip.jsx
+import React, { useState, useEffect } from "react";
 
 export default function Tooltip() {
   const [visible, setVisible] = useState(false);
@@ -9,13 +10,10 @@ export default function Tooltip() {
     function onShow(e) {
       const d = e.detail || {};
       setText(d.text || "");
-      // if x,y provided, use them; otherwise put it center top
-      setPos({ x: d.x || window.innerWidth / 2, y: (d.y || 0) - 28 });
+      setPos({ x: d.x || window.innerWidth / 2, y: (d.y || 0) - 8 });
       setVisible(true);
     }
-    function onHide() {
-      setVisible(false);
-    }
+    function onHide() { setVisible(false); }
     window.addEventListener("tooltip-show", onShow);
     window.addEventListener("tooltip-hide", onHide);
     return () => {
@@ -30,14 +28,14 @@ export default function Tooltip() {
     left: pos.x,
     top: pos.y,
     transform: "translate(-50%, -100%)",
-    padding: "6px 10px",
-    background: "rgba(0,0,0,0.8)",
-    color: "#fff",
-    borderRadius: 6,
-    fontSize: 12,
-    zIndex: 9999,
     pointerEvents: "none",
-    whiteSpace: "nowrap",
+    background: "rgba(10,10,10,0.9)",
+    color: "white",
+    padding: "6px 10px",
+    borderRadius: 6,
+    zIndex: 9999,
+    fontSize: 12,
+    whiteSpace: "nowrap"
   };
   return <div style={style}>{text}</div>;
 }

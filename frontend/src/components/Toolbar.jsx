@@ -1,97 +1,51 @@
-import React, { useState } from "react";
+// frontend/src/components/Toolbar.jsx
+import React, { useState, useEffect } from "react";
+import ToolButton from "./ToolButton";
 import ColorPicker from "./ColorPicker";
 import ShapesPanel from "./ShapesPanel";
 
 /*
- Toolbar buttons now dispatch custom window events:
-  - tool-change { tool: 'pen'|'eraser'|'rect'|'ellipse'|'line'|'arrow'|'text'|'select' }
-  - color-change { color: '#xxxxxx' }
-  - action { name: 'undo'|'redo'|'save'|'aiClean' }
+ Emits:
+  - tool-change { tool }
+  - color-change { color }
+  - action { name }
 */
 
-function emit(evName, detail = {}) {
-  window.dispatchEvent(new CustomEvent(evName, { detail }));
-}
-
-function ToolButton({ title, tool, children, isActive, onClick }) {
-  return (
-    <button
-      className={`tool-btn ${isActive ? "active" : ""}`}
-      title={title}
-      onClick={onClick}
-    >
-      {children}
-      <span className="tooltip-text">{title}</span>
-    </button>
-  );
-}
-
 export default function Toolbar() {
-  const [activeTool, setActiveTool] = useState("pen");
+  const [active, setActive] = useState("pen");
 
-  const handleToolClick = (tool) => {
-    setActiveTool(tool);
-    emit("tool-change", { tool });
-  };
+  useEffect(() => {
+    // keep active state synced if other parts change it
+    function onTool(e) { if (e.detail && e.detail.tool) setActive(e.detail.tool); }
+    window.addEventListener("tool-change", onTool);
+    return () => window.removeEventListener("tool-change", onTool);
+  }, []);
+
+  const emitAction = (name) => window.dispatchEvent(new CustomEvent("action", { detail: { name } }));
 
   return (
-    <div className="toolbar">
-      <ToolButton
-        title="Pen"
-        tool="pen"
-        isActive={activeTool === "pen"}
-        onClick={() => handleToolClick("pen")}
-      >
-        ✏️
-      </ToolButton>
+    <nav className="toolbar" role="toolbar" aria-label="Whiteboard tools">
+      <div className="tool-group">
+        <ToolButton title="Pen" tool="pen" active={active==="pen"}>✏️</ToolButton>
+        <ToolButton title="Eraser" tool="eraser" active={active==="eraser"}>🧽</ToolButton>
+        <ToolButton title="Select" tool="select" active={active==="select"}>🔲</ToolButton>
+      </div>
 
-      <ToolButton
-        title="Eraser"
-        tool="eraser"
-        isActive={activeTool === "eraser"}
-        onClick={() => handleToolClick("eraser")}
-      >
-        🧽
-      </ToolButton>
+      <div className="tool-group">
+        <ShapesPanel />
+      </div>
 
-      <ToolButton
-        title="Select"
-        tool="select"
-        isActive={activeTool === "select"}
-        onClick={() => handleToolClick("select")}
-      >
-        🔲
-      </ToolButton>
+      <div className="tool-group">
+        <ColorPicker onChange={(c)=>window.dispatchEvent(new CustomEvent("color-change",{detail:{color:c}}))}/>
+      </div>
 
-      <ShapesPanel />
-
-      <ColorPicker onChange={(color) => emit("color-change", { color })} />
-
-      <ToolButton title="Undo" onClick={() => emit("action", { name: "undo" })}>
-        ↶
-      </ToolButton>
-
-      <ToolButton title="Redo" onClick={() => emit("action", { name: "redo" })}>
-        ↷
-      </ToolButton>
-
-      <ToolButton title="Save" onClick={() => emit("action", { name: "save" })}>
-        💾
-      </ToolButton>
-
-      <ToolButton
-        title="AI Clean"
-        onClick={() => emit("action", { name: "aiClean" })}
-      >
-        🤖
-      </ToolButton>
-
-      <ToolButton
-        title="Gallery"
-        onClick={() => emit("action", { name: "gallery" })}
-      >
-        🖼️
-      </ToolButton>
-    </div>
+      <div className="tool-group">
+        <ToolButton title="Undo" onClick={() => emitAction("undo")}>↶</ToolButton>
+        <ToolButton title="Redo" onClick={() => emitAction("redo")}>↷</ToolButton>
+        <ToolButton title="Save" onClick={() => emitAction("save")}>💾</ToolButton>
+        <ToolButton title="AI Clean" onClick={() => emitAction("aiClean")}>🤖</ToolButton>
+        <ToolButton title="Gallery" onClick={() => emitAction("gallery")}>🖼️</ToolButton>
+      </div>
+    </nav>
   );
 }

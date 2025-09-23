@@ -1,49 +1,52 @@
+// frontend/src/components/Gallery.jsx
 import React, { useEffect, useState } from "react";
 
-export default function Gallery() {
+export default function Gallery({ token }) {
   const [items, setItems] = useState([]);
-
-  async function fetchGallery() {
+  async function load() {
     try {
       const res = await fetch((import.meta.env.VITE_BACKEND_URL || "/api") + "/gallery/");
-      const data = await res.json();
-      setItems(data);
+      if (!res.ok) throw new Error("load failed");
+      const j = await res.json();
+      setItems(j);
     } catch (e) {
-      console.error("gallery load failed", e);
+      console.error(e);
+      setItems([]);
     }
   }
 
   useEffect(() => {
-    fetchGallery();
-    // listen for event when new item is saved
-    function onUpdate() { fetchGallery(); }
+    load();
+    function onUpdate() { load(); }
     window.addEventListener("gallery-updated", onUpdate);
     return () => window.removeEventListener("gallery-updated", onUpdate);
   }, []);
 
-  function onLoad(item) {
+  function onOpen(item) {
     try {
       const parsed = JSON.parse(item.data_json || "{}");
-      window.dispatchEvent(new CustomEvent("load-diagram", { detail: parsed }));
+      if (parsed.png) {
+        window.dispatchEvent(new CustomEvent("load-diagram", { detail: parsed }));
+      } else {
+        alert("No image data found");
+      }
     } catch (e) {
-      console.error("invalid diagram", e);
-      alert("Cannot load this diagram");
+      console.error(e);
+      alert("Invalid gallery item");
     }
   }
 
+  if (!items || items.length === 0) return <div className="gallery-list"><div className="small">No items</div></div>;
+
   return (
-    <div>
-      <h4 style={{ color: "#6ee7b7" }}>Gallery</h4>
-      {items.length === 0 && <div className="small">No items</div>}
-      {items.map((it) => (
-        <div key={it.id} style={{ background: "rgba(255,255,255,0.01)", borderRadius: 8, padding: 8, marginTop: 8 }}>
+    <div className="gallery-list">
+      {items.map(it => (
+        <div key={it.id} className="gallery-item" onClick={() => onOpen(it)}>
           <div className="small">{it.title}</div>
           {it.data_json && (() => {
             try {
-              const parsed = JSON.parse(it.data_json);
-              if (parsed.png) {
-                return <img src={parsed.png} style={{ width: "100%", borderRadius: 6, marginTop: 6, cursor: "pointer" }} onClick={() => onLoad(it)} />;
-              }
+              const p = JSON.parse(it.data_json);
+              if (p.png) return <img src={p.png} alt={it.title} style={{ width: "100%", borderRadius: 6 }} />;
             } catch (e) {}
             return null;
           })()}
