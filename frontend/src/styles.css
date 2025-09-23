@@ -81,3 +81,62 @@ body{background:linear-gradient(180deg,#071025,#07163a);min-height:100vh;color:v
     opacity: 1;
   }
 }
+/* Toolbar styles */
+.toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+
+.tool-btn {
+  position: relative;
+  background: #1f2937;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.tool-btn:hover {
+  background: #374151;
+}
+
+.tool-btn.active {
+  background: #2563eb; /* highlight selected tool */
+}
+
+.tool-btn .tooltip-text {
+  visibility: hidden;
+  background: #111827;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 6px;
+  position: absolute;
+  bottom: 120%;
+  left: 50%;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.2s;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.tool-btn:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Mobile toolbar */
+@media (max-width: 768px) {
+  .toolbar {
+    flex-direction: row;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .tool-btn {
+    flex: 0 0 auto;
+  }
+}
