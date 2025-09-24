@@ -74,11 +74,9 @@ async def ping():
     return {"ok": True}
 
 # --- Serve React Frontend ---
-app.mount("/static", StaticFiles(directory="dist/assets"), name="static")
+app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
 
 @app.get("/{full_path:path}")
 async def serve_react_app(full_path: str):
     index_path = os.path.join("dist", "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return {"error": "index.html not found"}
+    return FileResponse(index_path)
