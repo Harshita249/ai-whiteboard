@@ -6,7 +6,8 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 
 from .db import engine, Base, AsyncSessionLocal
-from . import models, auth, gallery, ai_service
+from . import models, auth
+from .routers import gallery, ai
 from .ws_manager import manager
 from .schemas import UserCreate, Token
 
@@ -21,11 +22,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API routers
+# Routers
 app.include_router(gallery.router)
-app.include_router(ai_service.router)
+app.include_router(ai.router)
 
-# DB startup
+# DB init
 @app.on_event("startup")
 async def startup():
     async with engine.begin() as conn:
@@ -54,7 +55,7 @@ async def login(user: UserCreate):
         token = auth.create_access_token({"sub": u.username})
         return {"access_token": token, "token_type": "bearer"}
 
-# WebSocket
+# WebSockets
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
     await manager.connect(room_id, websocket)
@@ -65,28 +66,17 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     except WebSocketDisconnect:
         manager.disconnect(room_id, websocket)
 
-# Health check
+# Health
 @app.get("/ping")
 async def ping():
     return {"ok": True}
 
-# --- Serve React build robustly ---
-# determine dist absolute path relative to this file
-THIS_DIR = os.path.dirname(__file__)
-DIST_DIR = os.path.abspath(os.path.join(THIS_DIR, "..", "dist"))
+# Serve React build
+app.mount("/static", StaticFiles(directory="dist/assets"), name="static")
 
-# Serve built assets (Vite puts JS/CSS into dist/assets)
-assets_dir = os.path.join(DIST_DIR, "assets")
-if os.path.isdir(assets_dir):
-    app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
-
-# Fallback to index.html for all non-API and non-WS routes (SPA)
 @app.get("/{full_path:path}")
 async def serve_react_app(full_path: str):
-    # avoid intercepting API/WebSocket routes
-    if full_path.startswith("api") or full_path.startswith("ws") or full_path.startswith("assets"):
-        raise HTTPException(status_code=404, detail="Not Found")
-    index_path = os.path.join(DIST_DIR, "index.html")
+    index_path = os.path.join("dist", "index.html")
     if os.path.exists(index_path):
         return FileResponse(index_path)
-    raise HTTPException(status_code=404, detail="index.html not found")
+    return {"error": "index.html not found"}

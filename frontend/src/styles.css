@@ -1,196 +1,72 @@
-:root {
-  --bg: #071026;
-  --white: #eef2ff;
-  --accent: #6ee7b7;
+:root{--bg:#071026;--white:#eef2ff;--accent:#6ee7b7;}
+*{box-sizing:border-box;margin:0;padding:0;font-family:Inter,system-ui,Arial;}
+body{background:linear-gradient(180deg,#071025,#07163a);min-height:100vh;color:var(--white);display:flex;align-items:center;justify-content:center;padding:20px}
+.app{width:100%;max-width:1200px;background:rgba(255,255,255,0.02);padding:12px;border-radius:12px}
+.header{display:flex;justify-content:space-between;align-items:center;padding:6px 12px}
+.brand{color:var(--accent);font-weight:700}
+.workspace{display:flex;gap:12px;align-items:flex-start;justify-content:center}
+.toolbar{width:80px;background:rgba(255,255,255,0.02);border-radius:10px;padding:8px;display:flex;flex-direction:column;gap:8px;align-items:center}
+.board-wrap{flex:1;display:flex;justify-content:center;align-items:center}
+.board{width:900px;max-width:calc(100vw - 220px);aspect-ratio:16/9;background:white;border-radius:8px;border:6px solid #f8fafc;overflow:hidden;display:flex;flex-direction:column}
+.canvas-area{flex:1;display:flex;align-items:center;justify-content:center;padding:8px;background:repeating-linear-gradient(45deg,#fbfdff 0 2px,#f1f5f9 2px 10px)}
+.btn{background:transparent;border:none;color:var(--white);cursor:pointer;padding:8px;border-radius:8px;width:52px;height:40px;display:flex;align-items:center;justify-content:center}
+.color-input{width:44px;height:34px;border-radius:6px;border:1px solid rgba(0,0,0,0.06)}
+.right-panel{width:260px;background:rgba(255,255,255,0.02);border-radius:10px;padding:12px;overflow:auto;height:520px}
+.small{font-size:12px;color:#94a3b8}
+
+/* Toolbar & tool button base */
+.tool-btn{
+  position:relative;
+  background:#1f2937;
+  color:white;
+  border:none;
+  border-radius:8px;
+  padding:8px;
+  cursor:pointer;
+  width:44px;
+  height:44px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  transition:background .16s, transform .08s;
+}
+.tool-btn:hover{background:#374151}
+.tool-btn.active{background:linear-gradient(90deg,#2563eb,#7c3aed); transform:translateY(-2px);}
+
+/* tooltip label within button for accessibility */
+.tool-btn .tooltip-text{
+  position:absolute;
+  bottom:calc(100% + 8px);
+  left:50%;
+  transform:translateX(-50%);
+  background:rgba(10,10,10,0.9);
+  color:#fff;
+  padding:6px 8px;
+  border-radius:6px;
+  font-size:12px;
+  white-space:nowrap;
+  visibility:hidden;
+  opacity:0;
+  transition:opacity .12s;
+  z-index:50;
+}
+.tool-btn:hover .tooltip-text, .tool-btn:focus .tooltip-text{visibility:visible;opacity:1}
+
+/* toolbar groups */
+.toolbar .tool-group{display:flex;flex-direction:column;gap:8px}
+
+/* Responsive: mobile toolbar */
+@media (max-width:980px){
+  .toolbar{flex-direction:row;width:100%;height:56px;justify-content:center;align-items:center;overflow-x:auto;padding:6px}
+  .workspace{flex-direction:column}
+  .board{width:100%;aspect-ratio:4/3}
+  .right-panel{width:100%;height:auto}
+  .toolbar .tool-group{flex-direction:row}
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  font-family: Inter, system-ui, Arial;
-}
+/* Canvas wrappers */
+.canvas-layer{width:100%;height:100%;background:#fff;border-radius:6px}
 
-body {
-  background: linear-gradient(180deg, #071025, #07163a);
-  min-height: 100vh;
-  color: var(--white);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-}
-
-.app {
-  width: 100%;
-  max-width: 1200px;
-  background: rgba(255, 255, 255, 0.02);
-  padding: 12px;
-  border-radius: 12px;
-}
-
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 6px 12px;
-}
-
-.brand {
-  color: var(--accent);
-  font-weight: 700;
-}
-
-.workspace {
-  display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  justify-content: center;
-}
-
-/* --- Toolbar --- */
-.toolbar {
-  width: 80px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 10px;
-  padding: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: center;
-}
-
-/* Shared button base */
-.tool-btn {
-  position: relative;
-  background: #1f2937;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  padding: 8px;
-  cursor: pointer;
-  width: 44px;
-  height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s;
-}
-
-.tool-btn:hover {
-  background: #374151;
-}
-
-/* Active tool highlight */
-.tool-btn.active {
-  background: #2563eb;
-}
-
-/* Tooltips */
-.tool-btn .tooltip-text {
-  visibility: hidden;
-  background: #111827;
-  color: #fff;
-  padding: 4px 8px;
-  border-radius: 6px;
-  position: absolute;
-  bottom: 120%;
-  left: 50%;
-  transform: translateX(-50%);
-  opacity: 0;
-  transition: opacity 0.2s;
-  font-size: 12px;
-  white-space: nowrap;
-  z-index: 10;
-}
-
-.tool-btn:hover .tooltip-text,
-.tool-btn:focus .tooltip-text {
-  visibility: visible;
-  opacity: 1;
-}
-
-/* Canvas board */
-.board-wrap {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.board {
-  width: 900px;
-  max-width: calc(100vw - 220px);
-  aspect-ratio: 16/9;
-  background: white;
-  border-radius: 8px;
-  border: 6px solid #f8fafc;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-.canvas-area {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px;
-  background: repeating-linear-gradient(
-    45deg,
-    #fbfdff 0 2px,
-    #f1f5f9 2px 10px
-  );
-}
-
-/* Right panel / gallery */
-.right-panel {
-  width: 260px;
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 10px;
-  padding: 12px;
-  overflow: auto;
-  height: 520px;
-}
-
-.small {
-  font-size: 12px;
-  color: #94a3b8;
-}
-
-/* Color picker */
-.color-input {
-  width: 44px;
-  height: 34px;
-  border-radius: 6px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-/* --- Mobile Layout Fixes --- */
-@media (max-width: 980px) {
-  .workspace {
-    flex-direction: column;
-  }
-  .board {
-    width: 100%;
-    aspect-ratio: 4/3;
-  }
-  .right-panel {
-    width: 100%;
-    height: auto;
-  }
-}
-
-@media (max-width: 768px) {
-  .toolbar {
-    flex-direction: row;
-    width: 100%;
-    height: 56px;
-    justify-content: center;
-    overflow-x: auto;
-    white-space: nowrap;
-  }
-  .tool-btn {
-    flex: 0 0 auto;
-  }
-}
+/* Gallery */
+.gallery-list{display:grid;gap:8px}
+.gallery-item{background:rgba(255,255,255,0.02);padding:8px;border-radius:6px}

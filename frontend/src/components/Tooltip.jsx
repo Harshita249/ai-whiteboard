@@ -1,5 +1,5 @@
 // frontend/src/components/Tooltip.jsx
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 
 export default function Tooltip() {
   const [visible, setVisible] = useState(false);
@@ -29,13 +29,13 @@ export default function Tooltip() {
     top: pos.y,
     transform: "translate(-50%, -100%)",
     pointerEvents: "none",
-    background: "rgba(10,10,10,0.9)",
-    color: "white",
+    background: "rgba(0,0,0,0.85)",
+    color: "#fff",
     padding: "6px 10px",
     borderRadius: 6,
-    zIndex: 9999,
+    zIndex: 99999,
     fontSize: 12,
-    whiteSpace: "nowrap"
+    whiteSpace: "nowrap",
   };
   return <div style={style}>{text}</div>;
 }

@@ -8,7 +8,6 @@ export default function App() {
   const [token, setToken] = useState(null);
   const [username, setUsername] = useState("Guest");
 
-  // on mount read values from localStorage (ensures token available after page refresh)
   useEffect(() => {
     const t = localStorage.getItem("token");
     const u = localStorage.getItem("username");
@@ -16,10 +15,10 @@ export default function App() {
     if (u) setUsername(u);
   }, []);
 
-  const onLogin = (newToken, user) => {
-    setToken(newToken);
+  const onLogin = (tok, user) => {
+    setToken(tok);
     setUsername(user || "Guest");
-    if (newToken) localStorage.setItem("token", newToken);
+    if (tok) localStorage.setItem("token", tok);
     if (user) localStorage.setItem("username", user);
   };
 
@@ -31,7 +30,7 @@ export default function App() {
   };
 
   return (
-    <div className="app-root">
+    <div className="app">
       <Tooltip />
       {!token ? (
         <Login onLogin={onLogin} />

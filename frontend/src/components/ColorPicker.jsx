@@ -1,5 +1,27 @@
+// frontend/src/components/ColorPicker.jsx
+import React, { useState, useEffect } from "react";
 
-import React from 'react'
-export default function ColorPicker({value='#000000', onChange=()=>{}}){
-  return <input aria-label='color' className='color-input' type='color' defaultValue={value} onChange={e=>onChange(e.target.value)} />
+export default function ColorPicker({ onChange }) {
+  const [color, setColor] = useState("#000000");
+
+  useEffect(() => {
+    // emit initial
+    window.dispatchEvent(new CustomEvent("color-change", { detail: { color } }));
+  }, []);
+
+  function handleChange(e) {
+    setColor(e.target.value);
+    window.dispatchEvent(new CustomEvent("color-change", { detail: { color: e.target.value } }));
+    if (onChange) onChange(e.target.value);
+  }
+
+  return (
+    <input
+      className="color-input"
+      type="color"
+      value={color}
+      onChange={handleChange}
+      aria-label="Pick color"
+    />
+  );
 }

@@ -1,51 +1,32 @@
-// frontend/src/components/Toolbar.jsx
-import React, { useState, useEffect } from "react";
-import ToolButton from "./ToolButton";
+import React from "react";
 import ColorPicker from "./ColorPicker";
 import ShapesPanel from "./ShapesPanel";
 
-/*
- Emits:
-  - tool-change { tool }
-  - color-change { color }
-  - action { name }
-*/
-
-export default function Toolbar() {
-  const [active, setActive] = useState("pen");
-
-  useEffect(() => {
-    // keep active state synced if other parts change it
-    function onTool(e) { if (e.detail && e.detail.tool) setActive(e.detail.tool); }
-    window.addEventListener("tool-change", onTool);
-    return () => window.removeEventListener("tool-change", onTool);
-  }, []);
-
-  const emitAction = (name) => window.dispatchEvent(new CustomEvent("action", { detail: { name } }));
-
+function ToolButton({ title, tool, active, onClick, children }) {
   return (
-    <nav className="toolbar" role="toolbar" aria-label="Whiteboard tools">
-      <div className="tool-group">
-        <ToolButton title="Pen" tool="pen" active={active==="pen"}>✏️</ToolButton>
-        <ToolButton title="Eraser" tool="eraser" active={active==="eraser"}>🧽</ToolButton>
-        <ToolButton title="Select" tool="select" active={active==="select"}>🔲</ToolButton>
-      </div>
+    <button
+      className={`tool-btn ${active ? "active" : ""}`}
+      onClick={() => onClick(tool)}
+    >
+      {children}
+      <span className="tooltip-text">{title}</span>
+    </button>
+  );
+}
 
-      <div className="tool-group">
-        <ShapesPanel />
-      </div>
-
-      <div className="tool-group">
-        <ColorPicker onChange={(c)=>window.dispatchEvent(new CustomEvent("color-change",{detail:{color:c}}))}/>
-      </div>
-
-      <div className="tool-group">
-        <ToolButton title="Undo" onClick={() => emitAction("undo")}>↶</ToolButton>
-        <ToolButton title="Redo" onClick={() => emitAction("redo")}>↷</ToolButton>
-        <ToolButton title="Save" onClick={() => emitAction("save")}>💾</ToolButton>
-        <ToolButton title="AI Clean" onClick={() => emitAction("aiClean")}>🤖</ToolButton>
-        <ToolButton title="Gallery" onClick={() => emitAction("gallery")}>🖼️</ToolButton>
-      </div>
-    </nav>
+export default function Toolbar({ currentTool, setTool, setColor, doAction }) {
+  return (
+    <div className="toolbar">
+      <ToolButton title="Pen" tool="pen" active={currentTool==="pen"} onClick={setTool}>✏️</ToolButton>
+      <ToolButton title="Eraser" tool="eraser" active={currentTool==="eraser"} onClick={setTool}>🧽</ToolButton>
+      <ToolButton title="Select" tool="select" active={currentTool==="select"} onClick={setTool}>🔲</ToolButton>
+      <ShapesPanel setTool={setTool} currentTool={currentTool}/>
+      <ColorPicker onChange={setColor}/>
+      <ToolButton title="Undo" onClick={()=>doAction("undo")}>↶</ToolButton>
+      <ToolButton title="Redo" onClick={()=>doAction("redo")}>↷</ToolButton>
+      <ToolButton title="Save" onClick={()=>doAction("save")}>💾</ToolButton>
+      <ToolButton title="AI Clean" onClick={()=>doAction("aiClean")}>🤖</ToolButton>
+      <ToolButton title="Download" onClick={()=>doAction("download")}>⬇️</ToolButton>
+    </div>
   );
 }

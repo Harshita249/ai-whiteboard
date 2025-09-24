@@ -1,15 +1,20 @@
 // frontend/src/components/ToolButton.jsx
 import React from "react";
 
+/*
+ToolButton:
+- shows a small tooltip (via Tooltip component using events)
+- supports active highlighting
+- emits tool-change or custom onClick
+*/
+
 export default function ToolButton({ title, tool, onClick, children, active }) {
-  // Dispatch the primary action when clicked/tapped
   const handleClick = (e) => {
     e.stopPropagation();
-    if (onClick) return onClick();
+    if (onClick) return onClick(e);
     if (tool) window.dispatchEvent(new CustomEvent("tool-change", { detail: { tool } }));
   };
 
-  // Show tooltip events for global Tooltip component
   const showTip = (e) => {
     const rect = e.currentTarget.getBoundingClientRect();
     window.dispatchEvent(new CustomEvent("tooltip-show", {
@@ -26,8 +31,8 @@ export default function ToolButton({ title, tool, onClick, children, active }) {
       onMouseLeave={hideTip}
       onTouchStart={showTip}
       onTouchEnd={hideTip}
-      aria-label={title}
       title={title}
+      aria-label={title}
     >
       {children}
       <span className="tooltip-text" aria-hidden>{title}</span>
