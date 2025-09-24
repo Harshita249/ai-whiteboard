@@ -7,32 +7,34 @@ from sqlalchemy import select
 
 from .db import engine, Base, AsyncSessionLocal
 from . import models, auth
-from .routers import gallery, ai
 from .ws_manager import manager
 from .schemas import UserCreate, Token
 
+# Routers
+from .routers import gallery, ai
+
 app = FastAPI(title="AI Whiteboard Backend")
 
-# CORS
+# --- CORS ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # allow all for now
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Routers
-app.include_router(gallery.router)
-app.include_router(ai.router)
+# --- Routers ---
+app.include_router(gallery.router, prefix="/api/gallery", tags=["Gallery"])
+app.include_router(ai.router, prefix="/api/ai", tags=["AI"])
 
-# DB init
+# --- DB Startup ---
 @app.on_event("startup")
 async def startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-# Auth
+# --- Auth Routes ---
 @app.post("/api/register")
 async def register(user: UserCreate):
     async with AsyncSessionLocal() as session:
@@ -55,7 +57,7 @@ async def login(user: UserCreate):
         token = auth.create_access_token({"sub": u.username})
         return {"access_token": token, "token_type": "bearer"}
 
-# WebSockets
+# --- WebSocket ---
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str):
     await manager.connect(room_id, websocket)
@@ -66,12 +68,12 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     except WebSocketDisconnect:
         manager.disconnect(room_id, websocket)
 
-# Health
+# --- Health Check ---
 @app.get("/ping")
 async def ping():
     return {"ok": True}
 
-# Serve React build
+# --- Serve React Frontend ---
 app.mount("/static", StaticFiles(directory="dist/assets"), name="static")
 
 @app.get("/{full_path:path}")
