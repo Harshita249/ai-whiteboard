@@ -1,42 +1,51 @@
-// frontend/src/App.jsx
-import React, { useEffect, useState } from "react";
-import Login from "./components/Login";
-import Dashboard from "./components/Dashboard";
-import Tooltip from "./components/Tooltip";
+import React, { useRef, useState } from "react";
+import Toolbar from "./components/Toolbar";
+import CanvasBoard from "./components/CanvasBoard";
+import Gallery from "./components/Gallery";
+import "./styles.css";
 
 export default function App() {
-  const [token, setToken] = useState(null);
-  const [username, setUsername] = useState("Guest");
+  const [currentTool, setCurrentTool] = useState("pen");
+  const [currentColor, setCurrentColor] = useState("#000000");
+  const boardRef = useRef(null);
 
-  useEffect(() => {
-    const t = localStorage.getItem("token");
-    const u = localStorage.getItem("username");
-    if (t) setToken(t);
-    if (u) setUsername(u);
-  }, []);
-
-  const onLogin = (tok, user) => {
-    setToken(tok);
-    setUsername(user || "Guest");
-    if (tok) localStorage.setItem("token", tok);
-    if (user) localStorage.setItem("username", user);
-  };
-
-  const onLogout = () => {
-    setToken(null);
-    setUsername("Guest");
-    localStorage.removeItem("token");
-    localStorage.removeItem("username");
+  const handleAction = (name) => {
+    const board = boardRef.current;
+    if (!board) return;
+    switch (name) {
+      case "undo": board.undo(); break;
+      case "redo": board.redo(); break;
+      case "save": board.saveToGallery(); break;
+      case "aiClean": board.aiCleanup(); break;
+      case "download": board.downloadImage(); break;
+      default: break;
+    }
   };
 
   return (
     <div className="app">
-      <Tooltip />
-      {!token ? (
-        <Login onLogin={onLogin} />
-      ) : (
-        <Dashboard token={token} username={username} onLogout={onLogout} />
-      )}
+      <header className="header">
+        <div className="brand">AI Whiteboard</div>
+      </header>
+
+      <div className="workspace">
+        <Toolbar
+          currentTool={currentTool}
+          setTool={setCurrentTool}
+          setColor={setCurrentColor}
+          doAction={handleAction}
+        />
+
+        <div className="board-wrap">
+          <CanvasBoard
+            ref={boardRef}
+            currentTool={currentTool}
+            currentColor={currentColor}
+          />
+        </div>
+
+        <Gallery />
+      </div>
     </div>
   );
 }
