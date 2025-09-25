@@ -1,7 +1,6 @@
 import React, { useRef, useState } from "react";
 import Toolbar from "./components/Toolbar";
 import CanvasBoard from "./components/CanvasBoard";
-import Gallery from "./components/Gallery";
 import "./styles.css";
 
 export default function App() {
@@ -13,12 +12,23 @@ export default function App() {
     const board = boardRef.current;
     if (!board) return;
     switch (name) {
-      case "undo": board.undo(); break;
-      case "redo": board.redo(); break;
-      case "save": board.saveToGallery(); break;
-      case "aiClean": board.aiCleanup(); break;
-      case "download": board.downloadImage(); break;
-      default: break;
+      case "undo":
+        board.undo();
+        break;
+      case "redo":
+        board.redo();
+        break;
+      case "save":
+        board.saveToGallery();
+        break;
+      case "aiClean":
+        board.aiCleanup();
+        break;
+      case "download":
+        board.downloadImage();
+        break;
+      default:
+        break;
     }
   };
 
@@ -37,14 +47,20 @@ export default function App() {
         />
 
         <div className="board-wrap">
-          <CanvasBoard
-            ref={boardRef}
-            currentTool={currentTool}
-            currentColor={currentColor}
-          />
+          <div className="board-shell">
+            <CanvasBoard
+              ref={boardRef}
+              currentTool={currentTool}
+              currentColor={currentColor}
+            />
+          </div>
         </div>
 
-        <Gallery />
+        {/* right panel is optional - keep space or your Gallery */}
+        <aside className="right-panel">
+          <h3>Gallery</h3>
+          <div className="small">Open saved items here</div>
+        </aside>
       </div>
     </div>
   );
