@@ -3,8 +3,6 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: "./", // <-- IMPORTANT for Railway
-  build: {
-    outDir: "dist"
-  }
+  base: "./", // important for hosted builds so assets are relative
+  build: { outDir: "dist" }
 })
