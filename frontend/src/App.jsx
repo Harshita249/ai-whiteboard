@@ -1,5 +1,6 @@
 import React, { useRef, useState } from "react";
-import Toolbar from "./components/Toolbar";
+import ToolbarTop from "./components/ToolbarTop";
+import ToolbarSide from "./components/ToolbarSide";
 import CanvasBoard from "./components/CanvasBoard";
 import "./styles.css";
 
@@ -12,55 +13,31 @@ export default function App() {
     const board = boardRef.current;
     if (!board) return;
     switch (name) {
-      case "undo":
-        board.undo();
-        break;
-      case "redo":
-        board.redo();
-        break;
-      case "save":
-        board.saveToGallery();
-        break;
-      case "aiClean":
-        board.aiCleanup();
-        break;
-      case "download":
-        board.downloadImage();
-        break;
-      default:
-        break;
+      case "undo": board.undo(); break;
+      case "redo": board.redo(); break;
+      case "save": board.saveToGallery(); break;
+      case "aiClean": board.aiCleanup(); break;
+      case "download": board.downloadImage(); break;
+      default: break;
     }
   };
 
   return (
     <div className="app">
-      <header className="header">
-        <div className="brand">AI Whiteboard</div>
-      </header>
-
+      <ToolbarTop doAction={handleAction} />
       <div className="workspace">
-        <Toolbar
+        <ToolbarSide
           currentTool={currentTool}
           setTool={setCurrentTool}
           setColor={setCurrentColor}
-          doAction={handleAction}
         />
-
         <div className="board-wrap">
-          <div className="board-shell">
-            <CanvasBoard
-              ref={boardRef}
-              currentTool={currentTool}
-              currentColor={currentColor}
-            />
-          </div>
+          <CanvasBoard
+            ref={boardRef}
+            currentTool={currentTool}
+            currentColor={currentColor}
+          />
         </div>
-
-        {/* right panel is optional - keep space or your Gallery */}
-        <aside className="right-panel">
-          <h3>Gallery</h3>
-          <div className="small">Open saved items here</div>
-        </aside>
       </div>
     </div>
   );

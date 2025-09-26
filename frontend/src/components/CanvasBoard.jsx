@@ -2,82 +2,98 @@ import React, {
   forwardRef,
   useEffect,
   useImperativeHandle,
-  useRef,
+  useRef
 } from "react";
-import { saveGalleryItem, aiCleanup } from "../api"; // make sure api.js exports these
+import { saveGalleryItem, aiCleanup } from "../api";
 
-const MAX_STACK = 100;
+const MAX_STACK = 120;
 
 const CanvasBoard = forwardRef(({ currentTool, currentColor }, ref) => {
+  const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
-  const drawingRef = useRef(false);
-  const startRef = useRef(null);
-  const snapshotRef = useRef(null);
+
+  const drawing = useRef(false);
+  const start = useRef(null);
+  const snapshot = useRef(null);
+
   const undoStack = useRef([]);
   const redoStack = useRef([]);
 
-  // Resize & init canvas
+  // Create canvas element and setup DPR scaling
   useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // create canvas if not exists
+    if (!canvasRef.current) {
+      const c = document.createElement("canvas");
+      c.style.display = "block";
+      c.style.width = "100%";
+      c.style.height = "100%";
+      c.style.borderRadius = "8px";
+      c.style.background = "#fff";
+      canvasRef.current = c;
+      container.appendChild(c);
+    }
+
     const canvas = canvasRef.current;
-    if (!canvas) return;
 
     function resize() {
-      const rect = canvas.getBoundingClientRect();
+      const rect = container.getBoundingClientRect();
       const dpr = window.devicePixelRatio || 1;
       canvas.width = Math.round(rect.width * dpr);
       canvas.height = Math.round(rect.height * dpr);
-      const ctx = canvas.getContext("2d");
-      ctx.resetTransform && ctx.resetTransform(); // some browsers
-      ctx.scale(dpr, dpr);
+      const ctx = canvas.getContext("2d", { alpha: false });
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // scale
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
       ctxRef.current = ctx;
 
-      // if nothing drawn yet, fill white background
-      if (undoStack.current.length === 0) {
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, rect.width, rect.height);
-        // initial state
-        undoStack.current.push(canvas.toDataURL());
-      } else {
-        // reapply top of stack
+      // Draw previous snapshot or white background
+      if (undoStack.current.length) {
         const img = new Image();
         img.onload = () => {
           ctx.clearRect(0, 0, rect.width, rect.height);
           ctx.drawImage(img, 0, 0, rect.width, rect.height);
         };
         img.src = undoStack.current[undoStack.current.length - 1];
+      } else {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, rect.width, rect.height);
+        undoStack.current.push(canvas.toDataURL());
       }
     }
 
     resize();
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
-  }, []);
 
-  // pointer helpers
-  const getPoint = (evt) => {
+  }, []); // only once
+
+  // Utility: get mouse/touch point in canvas CSS px
+  function getPoint(e) {
     const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
-    let clientX = evt.clientX, clientY = evt.clientY;
-    if (evt.touches && evt.touches.length) {
-      clientX = evt.touches[0].clientX; clientY = evt.touches[0].clientY;
+    let clientX = e.clientX, clientY = e.clientY;
+    if (e.touches && e.touches.length) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
     }
     return { x: clientX - rect.left, y: clientY - rect.top };
-  };
+  }
 
-  // Undo/redo helpers
-  const pushUndo = () => {
+  // Undo/Redo helpers
+  function pushUndo() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     undoStack.current.push(canvas.toDataURL());
     if (undoStack.current.length > MAX_STACK) undoStack.current.shift();
-    // clear redo on new action
     redoStack.current = [];
-  };
+  }
 
-  const restoreFromDataUrl = (dataUrl) => {
+  function restoreDataUrl(dataUrl) {
     const img = new Image();
     const canvas = canvasRef.current;
     const ctx = ctxRef.current;
@@ -88,51 +104,54 @@ const CanvasBoard = forwardRef(({ currentTool, currentColor }, ref) => {
       ctx.drawImage(img, 0, 0, rect.width, rect.height);
     };
     img.src = dataUrl;
-  };
+  }
 
-  const undo = () => {
+  function undo() {
     if (undoStack.current.length < 2) return;
     const last = undoStack.current.pop();
     redoStack.current.push(last);
     const prev = undoStack.current[undoStack.current.length - 1];
-    if (prev) restoreFromDataUrl(prev);
-  };
+    if (prev) restoreDataUrl(prev);
+  }
 
-  const redo = () => {
+  function redo() {
     if (!redoStack.current.length) return;
     const next = redoStack.current.pop();
     undoStack.current.push(next);
-    restoreFromDataUrl(next);
-  };
+    restoreDataUrl(next);
+  }
 
-  // drawing functions
-  const drawLineSegment = (from, to, color = "#000", width = 2) => {
+  // Drawing primitives
+  function drawLine(p1, p2, color = "#000", width = 2) {
     const ctx = ctxRef.current;
     if (!ctx) return;
-    ctx.beginPath();
     ctx.strokeStyle = color;
     ctx.lineWidth = width;
-    ctx.moveTo(from.x, from.y);
-    ctx.lineTo(to.x, to.y);
+    ctx.beginPath();
+    ctx.moveTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
     ctx.stroke();
-  };
+  }
 
-  const drawShapeOnCtx = (a, b, toolName, color = "#000") => {
+  function drawShapeFinal(a, b, tool, color = "#000") {
     const ctx = ctxRef.current;
     if (!ctx) return;
-    if (toolName === "rect") {
-      ctx.strokeStyle = color; ctx.lineWidth = 2;
-      const x = Math.min(a.x, b.x); const y = Math.min(a.y, b.y);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    if (tool === "rect") {
+      const x = Math.min(a.x, b.x);
+      const y = Math.min(a.y, b.y);
       ctx.strokeRect(x, y, Math.abs(b.x - a.x), Math.abs(b.y - a.y));
-    } else if (toolName === "ellipse") {
-      ctx.strokeStyle = color; ctx.lineWidth = 2;
+    } else if (tool === "ellipse") {
       ctx.beginPath();
       ctx.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2, 0, 0, Math.PI * 2);
       ctx.stroke();
-    } else if (toolName === "line" || toolName === "arrow") {
-      ctx.strokeStyle = color; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-      if (toolName === "arrow") {
+    } else if (tool === "line" || tool === "arrow") {
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      if (tool === "arrow") {
         const angle = Math.atan2(b.y - a.y, b.x - a.x);
         const head = 10;
         ctx.beginPath();
@@ -142,29 +161,39 @@ const CanvasBoard = forwardRef(({ currentTool, currentColor }, ref) => {
         ctx.lineTo(b.x - head * Math.cos(angle + Math.PI / 6), b.y - head * Math.sin(angle + Math.PI / 6));
         ctx.stroke();
       }
-    } else if (toolName.startsWith("graph-")) {
-      // simple placeholder visuals
-      const x = Math.min(a.x, b.x); const y = Math.min(a.y, b.y);
-      const w = Math.abs(b.x - a.x); const h = Math.abs(b.y - a.y);
-      if (toolName === "graph-bar") {
-        const bars = 5; const pad = 6; const bw = (w - pad * (bars + 1)) / bars;
+    } else if (tool === "text") {
+      const text = prompt("Text:");
+      if (!text) return;
+      ctx.fillStyle = color;
+      ctx.font = "18px sans-serif";
+      ctx.fillText(text, a.x, a.y);
+    } else if (tool.startsWith("graph")) {
+      // simple placeholder graphs if desired
+      const x = Math.min(a.x, b.x);
+      const y = Math.min(a.y, b.y);
+      const w = Math.abs(b.x - a.x);
+      const h = Math.abs(b.y - a.y);
+      if (tool === "graph-bar") {
+        const bars = 5, pad = 6;
+        const bw = (w - pad * (bars + 1)) / bars;
         ctx.fillStyle = color;
         for (let i = 0; i < bars; i++) {
-          const val = 0.2 + 0.7 * Math.abs(Math.sin(i * 1.5));
-          const bh = val * h; const bx = x + pad + i * (bw + pad); const by = y + h - bh;
-          ctx.fillRect(bx, by, bw, bh);
+          const val = 0.2 + 0.7 * Math.abs(Math.sin(i));
+          const bh = val * h;
+          ctx.fillRect(x + pad + i * (bw + pad), y + h - bh, bw, bh);
         }
-      } else if (toolName === "graph-line") {
+      } else if (tool === "graph-line") {
         ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2;
-        for (let i = 0; i < 6; i++) {
-          const px = x + (i / 5) * w; const py = y + (0.2 + 0.7 * Math.abs(Math.cos(i * 0.9))) * h;
+        for (let i = 0; i <= 5; i++) {
+          const px = x + (i / 5) * w;
+          const py = y + (0.2 + 0.7 * Math.abs(Math.cos(i))) * h;
           if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
         }
         ctx.stroke();
-      } else if (toolName === "graph-pie") {
+      } else if (tool === "graph-pie") {
         const cx = x + w / 2, cy = y + h / 2, r = Math.min(w, h) / 2;
-        const slices = [0.3, 0.3, 0.4];
         let start = -Math.PI / 2;
+        const slices = [0.3, 0.3, 0.4];
         for (let i = 0; i < slices.length; i++) {
           const end = start + slices[i] * Math.PI * 2;
           ctx.beginPath();
@@ -176,114 +205,121 @@ const CanvasBoard = forwardRef(({ currentTool, currentColor }, ref) => {
           start = end;
         }
       }
-    } else if (toolName === "text") {
-      const text = prompt("Enter text:");
-      if (!text) return;
-      ctx.fillStyle = color; ctx.font = "18px sans-serif";
-      ctx.fillText(text, a.x, a.y);
     }
-  };
+  }
 
-  // preview: restore snapshot then draw preview shape
-  const previewShape = (to) => {
+  // Preview: restore snapshot and draw preview shape (on move)
+  function previewShape(a, b, tool, color) {
     const canvas = canvasRef.current;
-    if (!snapshotRef.current || !canvas) return;
+    if (!snapshot.current || !canvas) return;
     const img = new Image();
     img.onload = () => {
       const rect = canvas.getBoundingClientRect();
       const ctx = ctxRef.current;
       ctx.clearRect(0, 0, rect.width, rect.height);
       ctx.drawImage(img, 0, 0, rect.width, rect.height);
-      drawShapeOnCtx(startRef.current, to, currentTool, currentColor || "#000");
+      // draw preview
+      ctx.save();
+      ctx.globalAlpha = 1.0;
+      drawShapeFinal(a, b, tool, color);
+      ctx.restore();
     };
-    img.src = snapshotRef.current;
-  };
+    img.src = snapshot.current;
+  }
 
-  // pointer handlers
-  const onPointerDown = (e) => {
+  // Pointer handlers
+  function handleDown(e) {
+    e.preventDefault();
     const p = getPoint(e);
-    drawingRef.current = true;
-    startRef.current = p;
-    snapshotRef.current = canvasRef.current.toDataURL(); // used for preview
-    // push prior state to undoStack so undo goes back to previous
+    drawing.current = true;
+    start.current = p;
+    // save snapshot for preview shapes
+    snapshot.current = canvasRef.current.toDataURL();
+    // push pre-action snapshot for undo
     pushUndo();
+    // begin stroke for pen/eraser
     if (currentTool === "pen" || currentTool === "eraser") {
       const ctx = ctxRef.current;
       ctx.beginPath();
       ctx.moveTo(p.x, p.y);
     }
-    // prevent default to avoid scrolling
-    e.preventDefault();
-  };
+  }
 
-  const onPointerMove = (e) => {
-    if (!drawingRef.current) return;
+  function handleMove(e) {
+    if (!drawing.current) return;
     const p = getPoint(e);
     if (currentTool === "pen") {
-      drawLineSegment(startRef.current || p, p, currentColor || "#000", 2);
-      startRef.current = p;
+      drawLine(start.current || p, p, currentColor || "#000", 2);
+      start.current = p;
     } else if (currentTool === "eraser") {
-      drawLineSegment(startRef.current || p, p, "#ffffff", 20);
-      startRef.current = p;
+      drawLine(start.current || p, p, "#ffffff", 20);
+      start.current = p;
     } else {
       // shapes preview
-      previewShape(p);
+      previewShape(start.current, p, currentTool, currentColor || "#000");
     }
-  };
+  }
 
-  const onPointerUp = (e) => {
-    if (!drawingRef.current) return;
+  function handleUp(e) {
+    if (!drawing.current) return;
+    drawing.current = false;
     const p = getPoint(e);
+    const canvas = canvasRef.current;
+    // finalize shapes
     if (currentTool !== "pen" && currentTool !== "eraser") {
-      // finalize shape onto canvas by restoring snapshot then drawing final
-      restoreFromDataUrl(snapshotRef.current);
-      // wait a tick for restore to draw — use onload for reliability:
+      // restore snapshot then draw final shape, then push final state
       const img = new Image();
       img.onload = () => {
-        drawShapeOnCtx(startRef.current, p, currentTool, currentColor || "#000");
-        // after finalizing, push new state onto undo (we already pushed prior at pointerdown)
-        undoStack.current.push(canvasRef.current.toDataURL());
+        const rect = canvas.getBoundingClientRect();
+        const ctx = ctxRef.current;
+        ctx.clearRect(0, 0, rect.width, rect.height);
+        ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        // draw final
+        drawShapeFinal(start.current, p, currentTool, currentColor || "#000");
+        // push final to undo stack
+        undoStack.current.push(canvas.toDataURL());
         if (undoStack.current.length > MAX_STACK) undoStack.current.shift();
         redoStack.current = [];
       };
-      img.src = snapshotRef.current;
+      img.src = snapshot.current;
     } else {
-      // for pen/eraser final action already drawn; state already pushed at pointerdown
-      undoStack.current.push(canvasRef.current.toDataURL());
+      // pen/eraser path already drawn; push current
+      undoStack.current.push(canvas.toDataURL());
       if (undoStack.current.length > MAX_STACK) undoStack.current.shift();
       redoStack.current = [];
     }
-    drawingRef.current = false;
-    startRef.current = null;
-    snapshotRef.current = null;
-  };
+    start.current = null;
+    snapshot.current = null;
+  }
 
-  // attach pointer listeners
+  // attach pointer listeners on mount
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     canvas.style.touchAction = "none";
-    canvas.addEventListener("pointerdown", onPointerDown);
-    canvas.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    return () => {
-      canvas.removeEventListener("pointerdown", onPointerDown);
-      canvas.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTool, currentColor]);
+    canvas.addEventListener("pointerdown", handleDown);
+    canvas.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
 
-  // expose methods to parent
+    return () => {
+      if (!canvas) return;
+      canvas.removeEventListener("pointerdown", handleDown);
+      canvas.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
+    };
+  }, [currentTool, currentColor]); // rebind when tool/color changes
+
+  // Expose methods to parent (App)
   useImperativeHandle(ref, () => ({
     undo,
     redo,
     saveToGallery: async () => {
       try {
         const canvas = canvasRef.current;
+        if (!canvas) return;
         const dataUrl = canvas.toDataURL("image/png");
         const token = localStorage.getItem("token");
-        const payload = { title: `Board ${Date.now()}`, data_json: JSON.stringify({ png: dataUrl }) };
+        const payload = { title: `Saved ${Date.now()}`, data_json: JSON.stringify({ png: dataUrl }) };
         await saveGalleryItem(payload, token);
         window.dispatchEvent(new CustomEvent("gallery-updated"));
         alert("Saved to gallery");
@@ -295,22 +331,25 @@ const CanvasBoard = forwardRef(({ currentTool, currentColor }, ref) => {
     aiCleanup: async () => {
       try {
         const canvas = canvasRef.current;
+        if (!canvas) return;
         const dataUrl = canvas.toDataURL("image/png");
         const blob = await (await fetch(dataUrl)).blob();
-        const fd = new FormData(); fd.append("image", blob, "board.png");
+        const fd = new FormData();
+        fd.append("image", blob, "board.png");
         const token = localStorage.getItem("token");
-        const res = await aiCleanup(fd, token);
-        if (res?.data?.cleaned_png) {
+        const resp = await aiCleanup(fd, token);
+        if (resp && resp.data && resp.data.cleaned_png) {
           const img = new Image();
           img.onload = () => {
             const rect = canvas.getBoundingClientRect();
             ctxRef.current.clearRect(0, 0, rect.width, rect.height);
             ctxRef.current.drawImage(img, 0, 0, rect.width, rect.height);
+            // push result to undo stack
             undoStack.current.push(canvas.toDataURL());
           };
-          img.src = res.data.cleaned_png;
+          img.src = resp.data.cleaned_png;
         } else {
-          alert("AI returned no image");
+          alert("AI clean completed (no image returned)");
         }
       } catch (err) {
         console.error(err);
@@ -321,14 +360,18 @@ const CanvasBoard = forwardRef(({ currentTool, currentColor }, ref) => {
       const a = document.createElement("a");
       a.href = canvasRef.current.toDataURL("image/png");
       a.download = `whiteboard-${Date.now()}.png`;
-      document.body.appendChild(a); a.click(); a.remove();
-    },
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
   }));
 
-  // main render: canvas container
+  // render
   return (
-    <div className="canvas-area" style={{ width: "100%", height: "100%" }}>
-      <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block", background: "#fff", borderRadius: 8 }} />
+    <div ref={containerRef} style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 14 }}>
+      <div style={{ width: "100%", maxWidth: 1100, maxHeight: 700, height: "100%", display: "block" }}>
+        <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
+      </div>
     </div>
   );
 });
