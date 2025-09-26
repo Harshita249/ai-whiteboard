@@ -1,20 +1,37 @@
 import React from "react";
+import ColorPicker from "./ColorPicker";
 
-export default function ToolbarTop({ doAction }) {
-  const Button = ({ title, action, icon }) => (
-    <button className="tool-btn top-btn" onClick={action} title={title}>
+export default function ToolbarTop({ activeTool, setActiveTool, undo, redo, save, aiClean, color, setColor }) {
+  const ToolButton = ({ tool, icon, label, onClick }) => (
+    <button
+      className={`tool-btn ${activeTool === tool ? "active" : ""}`}
+      onClick={onClick || (() => setActiveTool(tool))}
+    >
       {icon}
+      <span className="tooltip-text">{label}</span>
     </button>
   );
 
   return (
-    <div className="toolbar-top">
-      <Button title="Undo" action={() => doAction("undo")} icon="↶" />
-      <Button title="Redo" action={() => doAction("redo")} icon="↷" />
-      <div style={{ width: 8 }} />
-      <Button title="Save" action={() => doAction("save")} icon="💾" />
-      <Button title="AI Clean" action={() => doAction("aiClean")} icon="🤖" />
-      <Button title="Download" action={() => doAction("download")} icon="⬇️" />
+    <div className="toolbar toolbar-top">
+      <ToolButton tool="pen" icon="✏️" label="Pen" />
+      <ToolButton tool="eraser" icon="🩹" label="Eraser" />
+      <ToolButton tool="select" icon="🔲" label="Select" />
+
+      {/* Color Picker */}
+      <div style={{ padding: 6 }}>
+        <ColorPicker
+          onChange={(c) => {
+            setColor(c);
+            setActiveTool("pen");
+          }}
+        />
+      </div>
+
+      <ToolButton icon="↶" label="Undo" onClick={undo} />
+      <ToolButton icon="↷" label="Redo" onClick={redo} />
+      <ToolButton icon="💾" label="Save" onClick={save} />
+      <ToolButton icon="🤖" label="AI Clean" onClick={aiClean} />
     </div>
   );
 }

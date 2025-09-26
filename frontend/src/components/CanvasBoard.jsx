@@ -1,379 +1,319 @@
-import React, {
-  forwardRef,
-  useEffect,
-  useImperativeHandle,
-  useRef
-} from "react";
-import { saveGalleryItem, aiCleanup } from "../api";
+import React, { useRef, useEffect, useState } from "react";
 
-const MAX_STACK = 120;
+/**
+ * CanvasBoard.jsx
+ * Full-featured drawing board with:
+ *  - Pen, Eraser, Shapes, Text
+ *  - Undo/Redo
+ *  - Save + Gallery Integration
+ *  - Tooltips + Tool highlight
+ *  - AI Clean (clear placeholder)
+ */
 
-const CanvasBoard = forwardRef(({ currentTool, currentColor }, ref) => {
-  const containerRef = useRef(null);
+export default function CanvasBoard({ token }) {
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
 
-  const drawing = useRef(false);
-  const start = useRef(null);
-  const snapshot = useRef(null);
+  // Tools
+  const [tool, setTool] = useState("pen");
+  const [color, setColor] = useState("#000000");
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [startPoint, setStartPoint] = useState(null);
 
-  const undoStack = useRef([]);
-  const redoStack = useRef([]);
+  // Undo/Redo
+  const [undoStack, setUndoStack] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
 
-  // Create canvas element and setup DPR scaling
+  // Gallery
+  const [gallery, setGallery] = useState([]);
+
+  // Canvas size
+  const [canvasSize, setCanvasSize] = useState({ w: 900, h: 600 });
+
+  // --- Initialize Canvas ---
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    // create canvas if not exists
-    if (!canvasRef.current) {
-      const c = document.createElement("canvas");
-      c.style.display = "block";
-      c.style.width = "100%";
-      c.style.height = "100%";
-      c.style.borderRadius = "8px";
-      c.style.background = "#fff";
-      canvasRef.current = c;
-      container.appendChild(c);
-    }
-
     const canvas = canvasRef.current;
+    canvas.width = canvasSize.w;
+    canvas.height = canvasSize.h;
+    const ctx = canvas.getContext("2d");
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = color;
+    ctxRef.current = ctx;
+  }, [canvasSize]);
 
-    function resize() {
-      const rect = container.getBoundingClientRect();
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.round(rect.width * dpr);
-      canvas.height = Math.round(rect.height * dpr);
-      const ctx = canvas.getContext("2d", { alpha: false });
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // scale
-      ctx.lineCap = "round";
-      ctx.lineJoin = "round";
-      ctxRef.current = ctx;
+  // --- Handle Tool + Color change via events ---
+  useEffect(() => {
+    const handleTool = (e) => setTool(e.detail.tool);
+    const handleColor = (e) => {
+      setColor(e.detail.color);
+      if (ctxRef.current) ctxRef.current.strokeStyle = e.detail.color;
+    };
+    const handleAction = (e) => {
+      if (e.detail.name === "undo") handleUndo();
+      if (e.detail.name === "redo") handleRedo();
+      if (e.detail.name === "save") handleSave();
+      if (e.detail.name === "aiClean") handleAIClean();
+    };
+    window.addEventListener("tool-change", handleTool);
+    window.addEventListener("color-change", handleColor);
+    window.addEventListener("action", handleAction);
+    return () => {
+      window.removeEventListener("tool-change", handleTool);
+      window.removeEventListener("color-change", handleColor);
+      window.removeEventListener("action", handleAction);
+    };
+  }, []);
 
-      // Draw previous snapshot or white background
-      if (undoStack.current.length) {
-        const img = new Image();
-        img.onload = () => {
-          ctx.clearRect(0, 0, rect.width, rect.height);
-          ctx.drawImage(img, 0, 0, rect.width, rect.height);
-        };
-        img.src = undoStack.current[undoStack.current.length - 1];
-      } else {
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, rect.width, rect.height);
-        undoStack.current.push(canvas.toDataURL());
+  // --- Mouse Down ---
+  const handleMouseDown = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    ctxRef.current.beginPath();
+    ctxRef.current.moveTo(x, y);
+    setStartPoint({ x, y });
+    setIsDrawing(true);
+
+    // Save state for undo
+    pushToUndo();
+  };
+
+  // --- Mouse Move ---
+  const handleMouseMove = (e) => {
+    if (!isDrawing) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (tool === "pen") {
+      ctxRef.current.lineTo(x, y);
+      ctxRef.current.strokeStyle = color;
+      ctxRef.current.stroke();
+    } else if (tool === "eraser") {
+      ctxRef.current.lineTo(x, y);
+      ctxRef.current.strokeStyle = "#ffffff";
+      ctxRef.current.lineWidth = 20;
+      ctxRef.current.stroke();
+      ctxRef.current.lineWidth = 2; // reset
+    } else if (["rect", "ellipse", "line", "arrow"].includes(tool)) {
+      redrawFromUndo();
+      previewShape(tool, startPoint, { x, y });
+    }
+  };
+
+  // --- Mouse Up ---
+  const handleMouseUp = (e) => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (["rect", "ellipse", "line", "arrow"].includes(tool)) {
+      drawShape(tool, startPoint, { x, y });
+    } else if (tool === "text") {
+      const text = prompt("Enter text:");
+      if (text) {
+        ctxRef.current.fillStyle = color;
+        ctxRef.current.font = "20px Arial";
+        ctxRef.current.fillText(text, x, y);
       }
     }
 
-    resize();
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
+    ctxRef.current.closePath();
+  };
 
-  }, []); // only once
-
-  // Utility: get mouse/touch point in canvas CSS px
-  function getPoint(e) {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    const rect = canvas.getBoundingClientRect();
-    let clientX = e.clientX, clientY = e.clientY;
-    if (e.touches && e.touches.length) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    }
-    return { x: clientX - rect.left, y: clientY - rect.top };
-  }
-
-  // Undo/Redo helpers
-  function pushUndo() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    undoStack.current.push(canvas.toDataURL());
-    if (undoStack.current.length > MAX_STACK) undoStack.current.shift();
-    redoStack.current = [];
-  }
-
-  function restoreDataUrl(dataUrl) {
-    const img = new Image();
-    const canvas = canvasRef.current;
+  // --- Shape Preview ---
+  const previewShape = (tool, start, end) => {
     const ctx = ctxRef.current;
-    if (!canvas || !ctx) return;
-    img.onload = () => {
-      const rect = canvas.getBoundingClientRect();
-      ctx.clearRect(0, 0, rect.width, rect.height);
-      ctx.drawImage(img, 0, 0, rect.width, rect.height);
-    };
-    img.src = dataUrl;
-  }
-
-  function undo() {
-    if (undoStack.current.length < 2) return;
-    const last = undoStack.current.pop();
-    redoStack.current.push(last);
-    const prev = undoStack.current[undoStack.current.length - 1];
-    if (prev) restoreDataUrl(prev);
-  }
-
-  function redo() {
-    if (!redoStack.current.length) return;
-    const next = redoStack.current.pop();
-    undoStack.current.push(next);
-    restoreDataUrl(next);
-  }
-
-  // Drawing primitives
-  function drawLine(p1, p2, color = "#000", width = 2) {
-    const ctx = ctxRef.current;
-    if (!ctx) return;
     ctx.strokeStyle = color;
-    ctx.lineWidth = width;
-    ctx.beginPath();
-    ctx.moveTo(p1.x, p1.y);
-    ctx.lineTo(p2.x, p2.y);
-    ctx.stroke();
-  }
-
-  function drawShapeFinal(a, b, tool, color = "#000") {
-    const ctx = ctxRef.current;
-    if (!ctx) return;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
     if (tool === "rect") {
-      const x = Math.min(a.x, b.x);
-      const y = Math.min(a.y, b.y);
-      ctx.strokeRect(x, y, Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+      ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
     } else if (tool === "ellipse") {
       ctx.beginPath();
-      ctx.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2, 0, 0, Math.PI * 2);
+      ctx.ellipse(
+        (start.x + end.x) / 2,
+        (start.y + end.y) / 2,
+        Math.abs(end.x - start.x) / 2,
+        Math.abs(end.y - start.y) / 2,
+        0,
+        0,
+        2 * Math.PI
+      );
       ctx.stroke();
-    } else if (tool === "line" || tool === "arrow") {
+    } else if (tool === "line") {
       ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
       ctx.stroke();
-      if (tool === "arrow") {
-        const angle = Math.atan2(b.y - a.y, b.x - a.x);
-        const head = 10;
-        ctx.beginPath();
-        ctx.moveTo(b.x, b.y);
-        ctx.lineTo(b.x - head * Math.cos(angle - Math.PI / 6), b.y - head * Math.sin(angle - Math.PI / 6));
-        ctx.moveTo(b.x, b.y);
-        ctx.lineTo(b.x - head * Math.cos(angle + Math.PI / 6), b.y - head * Math.sin(angle + Math.PI / 6));
-        ctx.stroke();
-      }
-    } else if (tool === "text") {
-      const text = prompt("Text:");
-      if (!text) return;
-      ctx.fillStyle = color;
-      ctx.font = "18px sans-serif";
-      ctx.fillText(text, a.x, a.y);
-    } else if (tool.startsWith("graph")) {
-      // simple placeholder graphs if desired
-      const x = Math.min(a.x, b.x);
-      const y = Math.min(a.y, b.y);
-      const w = Math.abs(b.x - a.x);
-      const h = Math.abs(b.y - a.y);
-      if (tool === "graph-bar") {
-        const bars = 5, pad = 6;
-        const bw = (w - pad * (bars + 1)) / bars;
-        ctx.fillStyle = color;
-        for (let i = 0; i < bars; i++) {
-          const val = 0.2 + 0.7 * Math.abs(Math.sin(i));
-          const bh = val * h;
-          ctx.fillRect(x + pad + i * (bw + pad), y + h - bh, bw, bh);
-        }
-      } else if (tool === "graph-line") {
-        ctx.beginPath(); ctx.strokeStyle = color; ctx.lineWidth = 2;
-        for (let i = 0; i <= 5; i++) {
-          const px = x + (i / 5) * w;
-          const py = y + (0.2 + 0.7 * Math.abs(Math.cos(i))) * h;
-          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
-        }
-        ctx.stroke();
-      } else if (tool === "graph-pie") {
-        const cx = x + w / 2, cy = y + h / 2, r = Math.min(w, h) / 2;
-        let start = -Math.PI / 2;
-        const slices = [0.3, 0.3, 0.4];
-        for (let i = 0; i < slices.length; i++) {
-          const end = start + slices[i] * Math.PI * 2;
-          ctx.beginPath();
-          ctx.moveTo(cx, cy);
-          ctx.arc(cx, cy, r, start, end);
-          ctx.closePath();
-          ctx.fillStyle = ["#ff7b7b", "#ffd27b", "#7be8a3"][i % 3];
-          ctx.fill();
-          start = end;
-        }
-      }
+    } else if (tool === "arrow") {
+      drawArrow(ctx, start, end);
     }
-  }
+  };
 
-  // Preview: restore snapshot and draw preview shape (on move)
-  function previewShape(a, b, tool, color) {
-    const canvas = canvasRef.current;
-    if (!snapshot.current || !canvas) return;
+  // --- Draw Final Shape ---
+  const drawShape = (tool, start, end) => {
+    previewShape(tool, start, end);
+  };
+
+  // --- Draw Arrow helper ---
+  const drawArrow = (ctx, start, end) => {
+    const headlen = 10;
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const angle = Math.atan2(dy, dx);
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    ctx.lineTo(end.x, end.y);
+    ctx.lineTo(
+      end.x - headlen * Math.cos(angle - Math.PI / 6),
+      end.y - headlen * Math.sin(angle - Math.PI / 6)
+    );
+    ctx.moveTo(end.x, end.y);
+    ctx.lineTo(
+      end.x - headlen * Math.cos(angle + Math.PI / 6),
+      end.y - headlen * Math.sin(angle + Math.PI / 6)
+    );
+    ctx.stroke();
+  };
+
+  // --- Undo/Redo Helpers ---
+  const pushToUndo = () => {
+    const url = canvasRef.current.toDataURL();
+    setUndoStack((prev) => [...prev, url]);
+    setRedoStack([]);
+  };
+
+  const handleUndo = () => {
+    if (undoStack.length === 0) return;
+    const last = undoStack[undoStack.length - 1];
+    setUndoStack((prev) => prev.slice(0, -1));
+    setRedoStack((prev) => [...prev, canvasRef.current.toDataURL()]);
+    restoreFromURL(last);
+  };
+
+  const handleRedo = () => {
+    if (redoStack.length === 0) return;
+    const last = redoStack[redoStack.length - 1];
+    setRedoStack((prev) => prev.slice(0, -1));
+    setUndoStack((prev) => [...prev, canvasRef.current.toDataURL()]);
+    restoreFromURL(last);
+  };
+
+  const restoreFromURL = (url) => {
     const img = new Image();
+    img.src = url;
     img.onload = () => {
-      const rect = canvas.getBoundingClientRect();
-      const ctx = ctxRef.current;
-      ctx.clearRect(0, 0, rect.width, rect.height);
-      ctx.drawImage(img, 0, 0, rect.width, rect.height);
-      // draw preview
-      ctx.save();
-      ctx.globalAlpha = 1.0;
-      drawShapeFinal(a, b, tool, color);
-      ctx.restore();
+      ctxRef.current.clearRect(0, 0, canvasSize.w, canvasSize.h);
+      ctxRef.current.drawImage(img, 0, 0);
     };
-    img.src = snapshot.current;
-  }
+  };
 
-  // Pointer handlers
-  function handleDown(e) {
-    e.preventDefault();
-    const p = getPoint(e);
-    drawing.current = true;
-    start.current = p;
-    // save snapshot for preview shapes
-    snapshot.current = canvasRef.current.toDataURL();
-    // push pre-action snapshot for undo
-    pushUndo();
-    // begin stroke for pen/eraser
-    if (currentTool === "pen" || currentTool === "eraser") {
-      const ctx = ctxRef.current;
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
+  const redrawFromUndo = () => {
+    if (undoStack.length === 0) return;
+    restoreFromURL(undoStack[undoStack.length - 1]);
+  };
+
+  // --- Save ---
+  const handleSave = () => {
+    const dataUrl = canvasRef.current.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.download = "whiteboard.png";
+    link.href = dataUrl;
+    link.click();
+
+    // save to gallery
+    fetch("/api/gallery/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        title: `Diagram-${Date.now()}`,
+        data_json: dataUrl,
+      }),
+    }).then(() => loadGallery());
+  };
+
+  // --- Gallery Load/Delete ---
+  const loadGallery = async () => {
+    const res = await fetch("/api/gallery", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setGallery(data);
     }
-  }
+  };
 
-  function handleMove(e) {
-    if (!drawing.current) return;
-    const p = getPoint(e);
-    if (currentTool === "pen") {
-      drawLine(start.current || p, p, currentColor || "#000", 2);
-      start.current = p;
-    } else if (currentTool === "eraser") {
-      drawLine(start.current || p, p, "#ffffff", 20);
-      start.current = p;
-    } else {
-      // shapes preview
-      previewShape(start.current, p, currentTool, currentColor || "#000");
-    }
-  }
+  const handleDelete = async (id) => {
+    await fetch(`/api/gallery/${id}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    loadGallery();
+  };
 
-  function handleUp(e) {
-    if (!drawing.current) return;
-    drawing.current = false;
-    const p = getPoint(e);
-    const canvas = canvasRef.current;
-    // finalize shapes
-    if (currentTool !== "pen" && currentTool !== "eraser") {
-      // restore snapshot then draw final shape, then push final state
-      const img = new Image();
-      img.onload = () => {
-        const rect = canvas.getBoundingClientRect();
-        const ctx = ctxRef.current;
-        ctx.clearRect(0, 0, rect.width, rect.height);
-        ctx.drawImage(img, 0, 0, rect.width, rect.height);
-        // draw final
-        drawShapeFinal(start.current, p, currentTool, currentColor || "#000");
-        // push final to undo stack
-        undoStack.current.push(canvas.toDataURL());
-        if (undoStack.current.length > MAX_STACK) undoStack.current.shift();
-        redoStack.current = [];
-      };
-      img.src = snapshot.current;
-    } else {
-      // pen/eraser path already drawn; push current
-      undoStack.current.push(canvas.toDataURL());
-      if (undoStack.current.length > MAX_STACK) undoStack.current.shift();
-      redoStack.current = [];
-    }
-    start.current = null;
-    snapshot.current = null;
-  }
+  // --- AI Clean (placeholder) ---
+  const handleAIClean = () => {
+    ctxRef.current.clearRect(0, 0, canvasSize.w, canvasSize.h);
+    setUndoStack([]);
+    setRedoStack([]);
+  };
 
-  // attach pointer listeners on mount
+  // --- Keyboard Shortcuts ---
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.style.touchAction = "none";
-    canvas.addEventListener("pointerdown", handleDown);
-    canvas.addEventListener("pointermove", handleMove);
-    window.addEventListener("pointerup", handleUp);
-
-    return () => {
-      if (!canvas) return;
-      canvas.removeEventListener("pointerdown", handleDown);
-      canvas.removeEventListener("pointermove", handleMove);
-      window.removeEventListener("pointerup", handleUp);
+    const down = (e) => {
+      if (e.ctrlKey && e.key === "z") handleUndo();
+      if (e.ctrlKey && e.key === "y") handleRedo();
+      if (e.key === "Delete") handleAIClean();
+      if (e.key === "Escape") setTool("select");
     };
-  }, [currentTool, currentColor]); // rebind when tool/color changes
+    window.addEventListener("keydown", down);
+    return () => window.removeEventListener("keydown", down);
+  });
 
-  // Expose methods to parent (App)
-  useImperativeHandle(ref, () => ({
-    undo,
-    redo,
-    saveToGallery: async () => {
-      try {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const dataUrl = canvas.toDataURL("image/png");
-        const token = localStorage.getItem("token");
-        const payload = { title: `Saved ${Date.now()}`, data_json: JSON.stringify({ png: dataUrl }) };
-        await saveGalleryItem(payload, token);
-        window.dispatchEvent(new CustomEvent("gallery-updated"));
-        alert("Saved to gallery");
-      } catch (err) {
-        console.error(err);
-        alert("Save failed");
-      }
-    },
-    aiCleanup: async () => {
-      try {
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const dataUrl = canvas.toDataURL("image/png");
-        const blob = await (await fetch(dataUrl)).blob();
-        const fd = new FormData();
-        fd.append("image", blob, "board.png");
-        const token = localStorage.getItem("token");
-        const resp = await aiCleanup(fd, token);
-        if (resp && resp.data && resp.data.cleaned_png) {
-          const img = new Image();
-          img.onload = () => {
-            const rect = canvas.getBoundingClientRect();
-            ctxRef.current.clearRect(0, 0, rect.width, rect.height);
-            ctxRef.current.drawImage(img, 0, 0, rect.width, rect.height);
-            // push result to undo stack
-            undoStack.current.push(canvas.toDataURL());
-          };
-          img.src = resp.data.cleaned_png;
-        } else {
-          alert("AI clean completed (no image returned)");
-        }
-      } catch (err) {
-        console.error(err);
-        alert("AI clean failed");
-      }
-    },
-    downloadImage: () => {
-      const a = document.createElement("a");
-      a.href = canvasRef.current.toDataURL("image/png");
-      a.download = `whiteboard-${Date.now()}.png`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-    }
-  }));
+  // --- Resize canvas when window resizes ---
+  useEffect(() => {
+    const resize = () => {
+      const w = Math.min(window.innerWidth - 300, 1200);
+      const h = Math.min(window.innerHeight - 200, 800);
+      setCanvasSize({ w, h });
+    };
+    window.addEventListener("resize", resize);
+    resize();
+    return () => window.removeEventListener("resize", resize);
+  }, []);
 
-  // render
   return (
-    <div ref={containerRef} style={{ width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 14 }}>
-      <div style={{ width: "100%", maxWidth: 1100, maxHeight: 700, height: "100%", display: "block" }}>
-        <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
+    <div className="board">
+      <div className="canvas-area">
+        <canvas
+          ref={canvasRef}
+          className="canvas"
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+        />
+      </div>
+
+      <div className="right-panel">
+        <h3>Gallery</h3>
+        <button onClick={loadGallery}>Refresh</button>
+        <ul>
+          {gallery.map((item) => (
+            <li key={item.id}>
+              <img src={item.data_json} alt={item.title} width="80" />
+              <button onClick={() => handleDelete(item.id)}>❌</button>
+            </li>
+          ))}
+        </ul>
       </div>
     </div>
   );
-});
-
-export default CanvasBoard;
+}

@@ -1,43 +1,33 @@
-import React, { useRef, useState } from "react";
+import React, { useState } from "react";
 import ToolbarTop from "./components/ToolbarTop";
 import ToolbarSide from "./components/ToolbarSide";
 import CanvasBoard from "./components/CanvasBoard";
-import "./styles.css";
 
 export default function App() {
-  const [currentTool, setCurrentTool] = useState("pen");
-  const [currentColor, setCurrentColor] = useState("#000000");
-  const boardRef = useRef(null);
+  const [activeTool, setActiveTool] = useState("pen");
+  const [color, setColor] = useState("#000000");
 
-  const handleAction = (name) => {
-    const board = boardRef.current;
-    if (!board) return;
-    switch (name) {
-      case "undo": board.undo(); break;
-      case "redo": board.redo(); break;
-      case "save": board.saveToGallery(); break;
-      case "aiClean": board.aiCleanup(); break;
-      case "download": board.downloadImage(); break;
-      default: break;
-    }
-  };
+  // Undo/Redo/Save handlers will be passed down if needed
+  const undo = () => window.dispatchEvent(new Event("undo"));
+  const redo = () => window.dispatchEvent(new Event("redo"));
+  const save = () => window.dispatchEvent(new Event("save"));
+  const aiClean = () => window.dispatchEvent(new Event("aiClean"));
 
   return (
     <div className="app">
-      <ToolbarTop doAction={handleAction} />
       <div className="workspace">
-        <ToolbarSide
-          currentTool={currentTool}
-          setTool={setCurrentTool}
-          setColor={setCurrentColor}
+        <ToolbarSide activeTool={activeTool} setActiveTool={setActiveTool} />
+        <CanvasBoard activeTool={activeTool} color={color} />
+        <ToolbarTop
+          activeTool={activeTool}
+          setActiveTool={setActiveTool}
+          undo={undo}
+          redo={redo}
+          save={save}
+          aiClean={aiClean}
+          color={color}
+          setColor={setColor}
         />
-        <div className="board-wrap">
-          <CanvasBoard
-            ref={boardRef}
-            currentTool={currentTool}
-            currentColor={currentColor}
-          />
-        </div>
       </div>
     </div>
   );
