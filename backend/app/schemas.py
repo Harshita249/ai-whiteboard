@@ -13,3 +13,7 @@ class Token(BaseModel):
 class DiagramIn(BaseModel):
     title: Optional[str]
     data_json: str
+
+class DiagramCreate(BaseModel):
+    title: str
+    data: str  # base64/png

@@ -5,9 +5,10 @@ from . import db, models
 from .auth import router as auth_router
 from .routers import gallery, ai
 
-models.Base.metadata.create_all(bind=db.engine)
-
 app = FastAPI()
+
+# Create tables
+models.Base.metadata.create_all(bind=db.engine)
 
 # Allow frontend calls (if served separately during dev)
 app.add_middleware(
