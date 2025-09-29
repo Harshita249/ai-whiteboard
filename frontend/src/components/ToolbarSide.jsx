@@ -1,22 +1,28 @@
 import React from "react";
 
-export default function ToolbarSide({ activeTool, setActiveTool }) {
-  const ToolButton = ({ tool, icon, label }) => (
-    <button
-      className={`tool-btn ${activeTool === tool ? "active" : ""}`}
-      onClick={() => setActiveTool(tool)}
-    >
-      {icon}
-      <span className="tooltip-text">{label}</span>
+function ToolBtn({ active, title, onClick, children }) {
+  return (
+    <button className={`tool-btn side-btn ${active ? "active" : ""}`} title={title} onClick={onClick}>
+      {children}
+      <span className="tooltip-text">{title}</span>
     </button>
   );
+}
 
+export default function ToolbarSide({ activeTool, setActiveTool, setColor }) {
   return (
-    <div className="toolbar toolbar-side">
-      <ToolButton tool="rect" icon="▭" label="Rectangle" />
-      <ToolButton tool="circle" icon="⚪" label="Circle" />
-      <ToolButton tool="line" icon="➖" label="Line" />
-      <ToolButton tool="text" icon="🔤" label="Text" />
+    <div className="toolbar-side">
+      <ToolBtn active={activeTool === "pen"} title="Pen" onClick={() => setActiveTool("pen")}>✏️</ToolBtn>
+      <ToolBtn active={activeTool === "eraser"} title="Eraser" onClick={() => setActiveTool("eraser")}>🧽</ToolBtn>
+      <ToolBtn active={activeTool === "select"} title="Select" onClick={() => setActiveTool("select")}>🔲</ToolBtn>
+
+      <hr style={{ width: "70%", opacity: 0.12 }} />
+
+      <ToolBtn active={activeTool === "rect"} title="Rectangle" onClick={() => setActiveTool("rect")}>▭</ToolBtn>
+      <ToolBtn active={activeTool === "ellipse"} title="Ellipse" onClick={() => setActiveTool("ellipse")}>◯</ToolBtn>
+      <ToolBtn active={activeTool === "line"} title="Line" onClick={() => setActiveTool("line")}>—</ToolBtn>
+      <ToolBtn active={activeTool === "arrow"} title="Arrow" onClick={() => setActiveTool("arrow")}>➤</ToolBtn>
+      <ToolBtn active={activeTool === "text"} title="Text" onClick={() => setActiveTool("text")}>🔤</ToolBtn>
     </div>
   );
 }

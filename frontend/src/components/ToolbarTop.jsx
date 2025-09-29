@@ -1,37 +1,30 @@
 import React from "react";
 import ColorPicker from "./ColorPicker";
 
-export default function ToolbarTop({ activeTool, setActiveTool, undo, redo, save, aiClean, color, setColor }) {
-  const ToolButton = ({ tool, icon, label, onClick }) => (
-    <button
-      className={`tool-btn ${activeTool === tool ? "active" : ""}`}
-      onClick={onClick || (() => setActiveTool(tool))}
-    >
-      {icon}
-      <span className="tooltip-text">{label}</span>
+export default function ToolbarTop({ doAction, activeTool, setActiveTool, color, setColor }) {
+  const Btn = ({ title, onClick, children }) => (
+    <button className="tool-btn top-btn" title={title} onClick={onClick}>
+      {children}
+      <span className="tooltip-text">{title}</span>
     </button>
   );
 
   return (
-    <div className="toolbar toolbar-top">
-      <ToolButton tool="pen" icon="✏️" label="Pen" />
-      <ToolButton tool="eraser" icon="🩹" label="Eraser" />
-      <ToolButton tool="select" icon="🔲" label="Select" />
-
-      {/* Color Picker */}
-      <div style={{ padding: 6 }}>
-        <ColorPicker
-          onChange={(c) => {
-            setColor(c);
-            setActiveTool("pen");
-          }}
-        />
+    <div className="toolbar-top">
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <Btn title="Undo" onClick={() => doAction("undo")}>↶</Btn>
+        <Btn title="Redo" onClick={() => doAction("redo")}>↷</Btn>
       </div>
 
-      <ToolButton icon="↶" label="Undo" onClick={undo} />
-      <ToolButton icon="↷" label="Redo" onClick={redo} />
-      <ToolButton icon="💾" label="Save" onClick={save} />
-      <ToolButton icon="🤖" label="AI Clean" onClick={aiClean} />
+      <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <Btn title="Save to Gallery" onClick={() => doAction("save")}>💾</Btn>
+        <Btn title="AI Clean" onClick={() => doAction("aiClean")}>🤖</Btn>
+        <Btn title="Download" onClick={() => doAction("download")}>⬇️</Btn>
+      </div>
+
+      <div style={{ marginLeft: 12 }}>
+        <ColorPicker value={color} onChange={(c) => setColor(c)} />
+      </div>
     </div>
   );
 }

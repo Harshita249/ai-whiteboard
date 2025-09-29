@@ -1,33 +1,63 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import ToolbarTop from "./components/ToolbarTop";
 import ToolbarSide from "./components/ToolbarSide";
 import CanvasBoard from "./components/CanvasBoard";
+import Gallery from "./components/Gallery";
 
 export default function App() {
+  const boardRef = useRef(null);
   const [activeTool, setActiveTool] = useState("pen");
   const [color, setColor] = useState("#000000");
 
-  // Undo/Redo/Save handlers will be passed down if needed
-  const undo = () => window.dispatchEvent(new Event("undo"));
-  const redo = () => window.dispatchEvent(new Event("redo"));
-  const save = () => window.dispatchEvent(new Event("save"));
-  const aiClean = () => window.dispatchEvent(new Event("aiClean"));
+  // central action dispatcher used by top toolbar
+  const handleAction = (name) => {
+    if (!boardRef.current) return;
+    switch (name) {
+      case "undo":
+        boardRef.current.undo();
+        break;
+      case "redo":
+        boardRef.current.redo();
+        break;
+      case "save":
+        boardRef.current.saveToGallery && boardRef.current.saveToGallery();
+        break;
+      case "aiClean":
+        boardRef.current.aiClean && boardRef.current.aiClean();
+        break;
+      case "download":
+        boardRef.current.downloadImage && boardRef.current.downloadImage();
+        break;
+      default:
+        break;
+    }
+  };
+
+  // Allow Gallery to load an image onto canvas
+  const handleLoadFromGallery = (dataUrl) => {
+    boardRef.current && boardRef.current.loadImage && boardRef.current.loadImage(dataUrl);
+  };
 
   return (
     <div className="app">
-      <div className="workspace">
-        <ToolbarSide activeTool={activeTool} setActiveTool={setActiveTool} />
-        <CanvasBoard activeTool={activeTool} color={color} />
-        <ToolbarTop
-          activeTool={activeTool}
-          setActiveTool={setActiveTool}
-          undo={undo}
-          redo={redo}
-          save={save}
-          aiClean={aiClean}
-          color={color}
-          setColor={setColor}
-        />
+      <ToolbarTop
+        doAction={handleAction}
+        activeTool={activeTool}
+        setActiveTool={setActiveTool}
+        color={color}
+        setColor={setColor}
+      />
+
+      <div className="workspace-row">
+        <ToolbarSide activeTool={activeTool} setActiveTool={setActiveTool} setColor={setColor} />
+
+        <div className="board-column">
+          <CanvasBoard ref={boardRef} activeTool={activeTool} strokeColor={color} />
+        </div>
+
+        <aside className="right-column">
+          <Gallery onLoad={handleLoadFromGallery} />
+        </aside>
       </div>
     </div>
   );

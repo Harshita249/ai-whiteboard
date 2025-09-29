@@ -1,35 +1,40 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
-from app.db import AsyncSessionLocal
-from app import models
-from app.auth import get_current_user
+from sqlalchemy.orm import Session
+from .. import db, models
 
-router = APIRouter()
+router = APIRouter(prefix="/api/gallery", tags=["gallery"])
+
+def get_db():
+    db_sess = db.SessionLocal()
+    try:
+        yield db_sess
+    finally:
+        db_sess.close()
 
 @router.post("/")
-async def save_gallery(item: dict, user = Depends(get_current_user)):
-    async with AsyncSessionLocal() as session:
-        gi = models.GalleryItem(owner_id=user.id if hasattr(user, "id") else getattr(user, "id", None), data_json=item.get("data_json"))
-        session.add(gi)
-        await session.commit()
-        await session.refresh(gi)
-        return {"id": gi.id, "data_json": gi.data_json}
+def save_diagram(title: str, data_json: str, db: Session = Depends(get_db)):
+    diagram = models.Diagram(title=title, data_json=data_json, owner="guest")
+    db.add(diagram)
+    db.commit()
+    db.refresh(diagram)
+    return diagram
 
 @router.get("/")
-async def list_gallery(user = Depends(get_current_user)):
-    async with AsyncSessionLocal() as session:
-        q = await session.execute(select(models.GalleryItem).filter_by(owner_id=user.id))
-        items = q.scalars().all()
-        # return simple list
-        return [{"id": it.id, "data_json": it.data_json, "title": getattr(it, "title", None)} for it in items]
+def list_diagrams(db: Session = Depends(get_db)):
+    return db.query(models.Diagram).order_by(models.Diagram.created_at.desc()).all()
 
-@router.delete("/{item_id}")
-async def delete_gallery(item_id: int, user = Depends(get_current_user)):
-    async with AsyncSessionLocal() as session:
-        q = await session.execute(select(models.GalleryItem).filter_by(id=item_id, owner_id=user.id))
-        item = q.scalars().first()
-        if not item:
-            raise HTTPException(404, "Not found")
-        await session.delete(item)
-        await session.commit()
-        return {"ok": True}
+@router.get("/{diagram_id}")
+def get_diagram(diagram_id: int, db: Session = Depends(get_db)):
+    diagram = db.query(models.Diagram).filter(models.Diagram.id == diagram_id).first()
+    if not diagram:
+        raise HTTPException(status_code=404, detail="Diagram not found")
+    return diagram
+
+@router.delete("/{diagram_id}")
+def delete_diagram(diagram_id: int, db: Session = Depends(get_db)):
+    diagram = db.query(models.Diagram).filter(models.Diagram.id == diagram_id).first()
+    if not diagram:
+        raise HTTPException(status_code=404, detail="Diagram not found")
+    db.delete(diagram)
+    db.commit()
+    return {"msg": "Deleted"}

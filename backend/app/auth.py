@@ -1,62 +1,50 @@
-from datetime import datetime, timedelta
-from typing import Optional
-
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, HTTPException, APIRouter
+from sqlalchemy.orm import Session
+from passlib.context import CryptContext
 from jose import jwt, JWTError
+from datetime import datetime, timedelta
+from . import db, models
 
-from .db import AsyncSessionLocal
-from . import models, schemas
+router = APIRouter(prefix="/api", tags=["auth"])
 
-# Secret & algorithm (must match token creation)
-SECRET_KEY = "supersecretkey"   # ⚠️ replace with env var in production
+SECRET_KEY = "changeme"  # use env var in production
 ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/login")
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+def get_db():
+    db_sess = db.SessionLocal()
+    try:
+        yield db_sess
+    finally:
+        db_sess.close()
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def hash_password(password: str):
+    return pwd_context.hash(password)
+
+def verify_password(password: str, hashed: str):
+    return pwd_context.verify(password, hashed)
+
+def create_access_token(data: dict, expires_delta: timedelta | None = None):
     to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=60))
+    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+@router.post("/register")
+def register(username: str, password: str, db: Session = Depends(get_db)):
+    if db.query(models.User).filter(models.User.username == username).first():
+        raise HTTPException(status_code=400, detail="Username already registered")
+    user = models.User(username=username, hashed_password=hash_password(password))
+    db.add(user)
+    db.commit()
+    return {"msg": "Registered successfully"}
 
-# Make sure these are implemented in your file
-def verify_password(plain_password, hashed_password):
-    # Example if you use passlib
-    from passlib.context import CryptContext
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-def get_password_hash(password):
-    from passlib.context import CryptContext
-    pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-    return pwd_context.hash(password)
-
-
-# 🔹 This is the fixed get_current_user
-async def get_current_user(token: str = Depends(oauth2_scheme)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid authentication credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-    except JWTError:
-        raise credentials_exception
-
-    # Query DB for user
-    async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            models.User.__table__.select().where(models.User.username == username)
-        )
-        user = result.scalars().first()  # ✅ FIXED: return ORM User object
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        return user
+@router.post("/login")
+def login(username: str, password: str, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.username == username).first()
+    if not user or not verify_password(password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Invalid credentials")
+    token = create_access_token({"sub": user.username})
+    return {"access_token": token, "token_type": "bearer"}

@@ -1,67 +1,47 @@
 import React, { useEffect, useState } from "react";
-import { listGallery, deleteGalleryItem } from "../api";
+import { listGallery, deleteDiagram } from "../api";
 
-export default function Gallery() {
+export default function Gallery({ onLoad }) {
   const [items, setItems] = useState([]);
 
-  async function load() {
+  const refresh = async () => {
     try {
-      const token = localStorage.getItem("token");
       const res = await listGallery();
+      // assume res.data is array of { id, title, data_json }
       setItems(res.data || []);
-    } catch (e) {
-      console.warn("gallery load failed", e);
+    } catch (err) {
+      console.error("Failed to load gallery", err);
       setItems([]);
     }
-  }
+  };
 
-  useEffect(() => {
-    load();
-    window.addEventListener("gallery-updated", load);
-    return () => window.removeEventListener("gallery-updated", load);
-  }, []);
+  useEffect(() => { refresh(); }, []);
 
-  async function onDelete(it) {
-    if (!confirm("Delete this item?")) return;
-    try {
-      const token = localStorage.getItem("token");
-      await deleteGalleryItem(it.id, token);
-      window.dispatchEvent(new CustomEvent("gallery-updated"));
-    } catch (e) {
-      alert("Delete failed");
-      console.error(e);
-    }
-  }
-
-  function onOpen(it) {
-    try {
-      const parsed = JSON.parse(it.data_json || "{}");
-      if (parsed.png) window.dispatchEvent(new CustomEvent("load-diagram", { detail: { png: parsed.png } }));
-      else alert("Item has no image");
-    } catch (e) {
-      alert("Cannot open item");
-    }
-  }
+  const remove = async (id) => {
+    await deleteDiagram(id);
+    refresh();
+  };
 
   return (
-    <aside className="right-panel">
-      <h4 style={{ color: "#6ee7b7" }}>Gallery</h4>
-      {items.length === 0 && <div className="small">No items yet</div>}
+    <div style={{ width: 280, padding: 8 }}>
+      <h3 style={{ marginBottom: 8 }}>Gallery</h3>
       <div style={{ display: "grid", gap: 8 }}>
-        {items.map(it => {
-          const parsed = (() => { try { return JSON.parse(it.data_json) } catch { return {}; } })();
-          return (
-            <div key={it.id} className="gallery-item">
-              <div className="small">{it.title || `Item ${it.id}`}</div>
-              {parsed.png && <img src={parsed.png} style={{ width: "100%", borderRadius: 6, cursor: "pointer" }} onClick={() => onOpen(it)} alt="" />}
-              <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                <button className="tool-btn" onClick={() => onOpen(it)}>Open</button>
-                <button className="tool-btn" onClick={() => onDelete(it)}>Delete</button>
+        {items.length === 0 && <div className="small">No saved items</div>}
+        {items.map((it) => (
+          <div key={it.id} style={{ background: "#0b1220", padding: 6, borderRadius: 6 }}>
+            <div style={{ display: "flex", gap: 6 }}>
+              <img src={typeof it.data_json === "string" ? (JSON.parse(it.data_json).png || it.data_json) : it.data_json} alt={it.title} style={{ width: 80, height: 60, objectFit: "cover", borderRadius: 4 }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13 }}>{it.title}</div>
+                <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                  <button className="tool-btn" onClick={() => onLoad(typeof it.data_json === "string" ? (JSON.parse(it.data_json).png || it.data_json) : it.data_json)}>Open</button>
+                  <button className="tool-btn" onClick={() => remove(it.id)}>Delete</button>
+                </div>
               </div>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
-    </aside>
+    </div>
   );
 }

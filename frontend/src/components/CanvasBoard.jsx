@@ -1,319 +1,457 @@
-import React, { useRef, useEffect, useState } from "react";
+import React, {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState
+} from "react";
+import { saveDiagram as apiSaveDiagram, aiCleanup as apiAiCleanup } from "../api";
 
-/**
- * CanvasBoard.jsx
- * Full-featured drawing board with:
- *  - Pen, Eraser, Shapes, Text
- *  - Undo/Redo
- *  - Save + Gallery Integration
- *  - Tooltips + Tool highlight
- *  - AI Clean (clear placeholder)
- */
+/*
+  CanvasBoard (full-feature)
+  - Exposes methods via ref:
+      undo(), redo(), saveToGallery(), aiClean(), downloadImage(), loadImage(dataUrl)
+  - Props: activeTool, strokeColor
+*/
 
-export default function CanvasBoard({ token }) {
+const MAX_STACK = 150;
+
+const CanvasBoard = forwardRef(({ activeTool = "pen", strokeColor = "#000" }, ref) => {
+  const containerRef = useRef(null);
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
 
-  // Tools
-  const [tool, setTool] = useState("pen");
-  const [color, setColor] = useState("#000000");
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [startPoint, setStartPoint] = useState(null);
+  const isDrawingRef = useRef(false);
+  const startRef = useRef(null);
+  const snapshotRef = useRef(null); // dataURL of canvas before shape preview
+  const snapshotImgRef = useRef(null);
 
-  // Undo/Redo
-  const [undoStack, setUndoStack] = useState([]);
-  const [redoStack, setRedoStack] = useState([]);
+  const undoStack = useRef([]);
+  const redoStack = useRef([]);
 
-  // Gallery
-  const [gallery, setGallery] = useState([]);
+  // For text editing overlay
+  const inputRef = useRef(null);
 
-  // Canvas size
-  const [canvasSize, setCanvasSize] = useState({ w: 900, h: 600 });
-
-  // --- Initialize Canvas ---
+  // init canvas and DPR scaling
   useEffect(() => {
     const canvas = canvasRef.current;
-    canvas.width = canvasSize.w;
-    canvas.height = canvasSize.h;
-    const ctx = canvas.getContext("2d");
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = color;
-    ctxRef.current = ctx;
-  }, [canvasSize]);
+    if (!canvas) return;
 
-  // --- Handle Tool + Color change via events ---
-  useEffect(() => {
-    const handleTool = (e) => setTool(e.detail.tool);
-    const handleColor = (e) => {
-      setColor(e.detail.color);
-      if (ctxRef.current) ctxRef.current.strokeStyle = e.detail.color;
+    const setup = () => {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(rect.width * dpr);
+      canvas.height = Math.round(rect.height * dpr);
+      const ctx = canvas.getContext("2d", { alpha: false });
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctxRef.current = ctx;
+
+      // initial blank background if stack empty
+      if (undoStack.current.length === 0) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, rect.width, rect.height);
+        undoStack.current.push(canvas.toDataURL());
+      } else {
+        // restore latest
+        const img = new Image();
+        img.onload = () => ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        img.src = undoStack.current[undoStack.current.length - 1];
+      }
     };
-    const handleAction = (e) => {
-      if (e.detail.name === "undo") handleUndo();
-      if (e.detail.name === "redo") handleRedo();
-      if (e.detail.name === "save") handleSave();
-      if (e.detail.name === "aiClean") handleAIClean();
-    };
-    window.addEventListener("tool-change", handleTool);
-    window.addEventListener("color-change", handleColor);
-    window.addEventListener("action", handleAction);
-    return () => {
-      window.removeEventListener("tool-change", handleTool);
-      window.removeEventListener("color-change", handleColor);
-      window.removeEventListener("action", handleAction);
-    };
+
+    setup();
+    window.addEventListener("resize", setup);
+    return () => window.removeEventListener("resize", setup);
   }, []);
 
-  // --- Mouse Down ---
-  const handleMouseDown = (e) => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    ctxRef.current.beginPath();
-    ctxRef.current.moveTo(x, y);
-    setStartPoint({ x, y });
-    setIsDrawing(true);
-
-    // Save state for undo
-    pushToUndo();
-  };
-
-  // --- Mouse Move ---
-  const handleMouseMove = (e) => {
-    if (!isDrawing) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    if (tool === "pen") {
-      ctxRef.current.lineTo(x, y);
-      ctxRef.current.strokeStyle = color;
-      ctxRef.current.stroke();
-    } else if (tool === "eraser") {
-      ctxRef.current.lineTo(x, y);
-      ctxRef.current.strokeStyle = "#ffffff";
-      ctxRef.current.lineWidth = 20;
-      ctxRef.current.stroke();
-      ctxRef.current.lineWidth = 2; // reset
-    } else if (["rect", "ellipse", "line", "arrow"].includes(tool)) {
-      redrawFromUndo();
-      previewShape(tool, startPoint, { x, y });
+  // Utilities: map client coordinates to canvas coordinates (CSS -> canvas px)
+  const getCanvasPos = (e) => {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const dpr = canvas.width / rect.width;
+    let clientX = e.clientX, clientY = e.clientY;
+    if (e.touches && e.touches[0]) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
     }
+    return {
+      x: (clientX - rect.left) * dpr,
+      y: (clientY - rect.top) * dpr,
+    };
   };
 
-  // --- Mouse Up ---
-  const handleMouseUp = (e) => {
-    if (!isDrawing) return;
-    setIsDrawing(false);
-
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    if (["rect", "ellipse", "line", "arrow"].includes(tool)) {
-      drawShape(tool, startPoint, { x, y });
-    } else if (tool === "text") {
-      const text = prompt("Enter text:");
-      if (text) {
-        ctxRef.current.fillStyle = color;
-        ctxRef.current.font = "20px Arial";
-        ctxRef.current.fillText(text, x, y);
-      }
-    }
-
-    ctxRef.current.closePath();
+  // Undo / Redo
+  const pushUndo = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    undoStack.current.push(canvas.toDataURL());
+    if (undoStack.current.length > MAX_STACK) undoStack.current.shift();
+    redoStack.current = [];
   };
 
-  // --- Shape Preview ---
-  const previewShape = (tool, start, end) => {
+  const restoreDataUrl = (dataUrl) => {
+    const img = new Image();
+    const canvas = canvasRef.current;
     const ctx = ctxRef.current;
-    ctx.strokeStyle = color;
-    if (tool === "rect") {
-      ctx.strokeRect(start.x, start.y, end.x - start.x, end.y - start.y);
-    } else if (tool === "ellipse") {
-      ctx.beginPath();
-      ctx.ellipse(
-        (start.x + end.x) / 2,
-        (start.y + end.y) / 2,
-        Math.abs(end.x - start.x) / 2,
-        Math.abs(end.y - start.y) / 2,
-        0,
-        0,
-        2 * Math.PI
-      );
-      ctx.stroke();
-    } else if (tool === "line") {
-      ctx.beginPath();
-      ctx.moveTo(start.x, start.y);
-      ctx.lineTo(end.x, end.y);
-      ctx.stroke();
-    } else if (tool === "arrow") {
-      drawArrow(ctx, start, end);
-    }
+    if (!canvas || !ctx) return;
+    img.onload = () => {
+      const rect = canvas.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      ctx.drawImage(img, 0, 0, rect.width, rect.height);
+    };
+    img.src = dataUrl;
   };
 
-  // --- Draw Final Shape ---
-  const drawShape = (tool, start, end) => {
-    previewShape(tool, start, end);
+  const undo = () => {
+    if (undoStack.current.length < 2) return;
+    const last = undoStack.current.pop();
+    redoStack.current.push(last);
+    const prev = undoStack.current[undoStack.current.length - 1];
+    if (prev) restoreDataUrl(prev);
   };
 
-  // --- Draw Arrow helper ---
-  const drawArrow = (ctx, start, end) => {
-    const headlen = 10;
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const angle = Math.atan2(dy, dx);
+  const redo = () => {
+    if (!redoStack.current.length) return;
+    const next = redoStack.current.pop();
+    undoStack.current.push(next);
+    restoreDataUrl(next);
+  };
+
+  // Drawing primitives
+  const drawLineSegment = (from, to, color, width) => {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
     ctx.beginPath();
-    ctx.moveTo(start.x, start.y);
-    ctx.lineTo(end.x, end.y);
-    ctx.lineTo(
-      end.x - headlen * Math.cos(angle - Math.PI / 6),
-      end.y - headlen * Math.sin(angle - Math.PI / 6)
-    );
-    ctx.moveTo(end.x, end.y);
-    ctx.lineTo(
-      end.x - headlen * Math.cos(angle + Math.PI / 6),
-      end.y - headlen * Math.sin(angle + Math.PI / 6)
-    );
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.moveTo(from.x, from.y);
+    ctx.lineTo(to.x, to.y);
     ctx.stroke();
   };
 
-  // --- Undo/Redo Helpers ---
-  const pushToUndo = () => {
-    const url = canvasRef.current.toDataURL();
-    setUndoStack((prev) => [...prev, url]);
-    setRedoStack([]);
-  };
-
-  const handleUndo = () => {
-    if (undoStack.length === 0) return;
-    const last = undoStack[undoStack.length - 1];
-    setUndoStack((prev) => prev.slice(0, -1));
-    setRedoStack((prev) => [...prev, canvasRef.current.toDataURL()]);
-    restoreFromURL(last);
-  };
-
-  const handleRedo = () => {
-    if (redoStack.length === 0) return;
-    const last = redoStack[redoStack.length - 1];
-    setRedoStack((prev) => prev.slice(0, -1));
-    setUndoStack((prev) => [...prev, canvasRef.current.toDataURL()]);
-    restoreFromURL(last);
-  };
-
-  const restoreFromURL = (url) => {
-    const img = new Image();
-    img.src = url;
-    img.onload = () => {
-      ctxRef.current.clearRect(0, 0, canvasSize.w, canvasSize.h);
-      ctxRef.current.drawImage(img, 0, 0);
-    };
-  };
-
-  const redrawFromUndo = () => {
-    if (undoStack.length === 0) return;
-    restoreFromURL(undoStack[undoStack.length - 1]);
-  };
-
-  // --- Save ---
-  const handleSave = () => {
-    const dataUrl = canvasRef.current.toDataURL("image/png");
-    const link = document.createElement("a");
-    link.download = "whiteboard.png";
-    link.href = dataUrl;
-    link.click();
-
-    // save to gallery
-    fetch("/api/gallery/save", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        title: `Diagram-${Date.now()}`,
-        data_json: dataUrl,
-      }),
-    }).then(() => loadGallery());
-  };
-
-  // --- Gallery Load/Delete ---
-  const loadGallery = async () => {
-    const res = await fetch("/api/gallery", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setGallery(data);
+  const drawShapeOnCtx = (a, b, tool, color) => {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    if (tool === "rect") {
+      const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+      ctx.strokeRect(x, y, Math.abs(b.x - a.x), Math.abs(b.y - a.y));
+    } else if (tool === "ellipse") {
+      ctx.beginPath();
+      ctx.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (tool === "line" || tool === "arrow") {
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      if (tool === "arrow") {
+        const angle = Math.atan2(b.y - a.y, b.x - a.x);
+        const head = 12;
+        ctx.beginPath();
+        ctx.moveTo(b.x, b.y);
+        ctx.lineTo(b.x - head * Math.cos(angle - Math.PI / 6), b.y - head * Math.sin(angle - Math.PI / 6));
+        ctx.moveTo(b.x, b.y);
+        ctx.lineTo(b.x - head * Math.cos(angle + Math.PI / 6), b.y - head * Math.sin(angle + Math.PI / 6));
+        ctx.stroke();
+      }
+    } else if (tool === "text") {
+      // handled elsewhere
     }
   };
 
-  const handleDelete = async (id) => {
-    await fetch(`/api/gallery/${id}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
+  // Preview shape: restore snapshot then draw shape
+  const previewShape = (to) => {
+    const canvas = canvasRef.current;
+    const img = snapshotImgRef.current;
+    const ctx = ctxRef.current;
+    if (!snapshotRef.current || !canvas || !ctx) return;
+    // If image already loaded, draw immediately
+    if (img && img.complete) {
+      const rect = canvas.getBoundingClientRect();
+      ctx.clearRect(0, 0, rect.width, rect.height);
+      ctx.drawImage(img, 0, 0, rect.width, rect.height);
+      drawShapeOnCtx(startRef.current, to, activeTool, strokeColor);
+    } else {
+      // fallback: use new image and onload
+      const im = new Image();
+      im.onload = () => {
+        snapshotImgRef.current = im;
+        const rect = canvas.getBoundingClientRect();
+        ctx.clearRect(0, 0, rect.width, rect.height);
+        ctx.drawImage(im, 0, 0, rect.width, rect.height);
+        drawShapeOnCtx(startRef.current, to, activeTool, strokeColor);
+      };
+      im.src = snapshotRef.current;
+    }
+  };
+
+  // Pointer event handlers
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const onPointerDown = (ev) => {
+      ev.preventDefault();
+      // for text, we won't begin drawing; we will place input on click
+      const pos = getEventPos(ev);
+      isDrawingRef.current = true;
+      startRef.current = pos;
+      // snapshot current canvas for shape preview
+      snapshotRef.current = canvas.toDataURL();
+      snapshotImgRef.current = new Image();
+      snapshotImgRef.current.src = snapshotRef.current;
+
+      // push previous state into undo BEFORE performing the new action
+      pushUndo();
+
+      if (activeTool === "pen" || activeTool === "eraser") {
+        const ctx = ctxRef.current;
+        ctx.beginPath();
+        ctx.moveTo(pos.x, pos.y);
+      } else if (activeTool === "text") {
+        // create small input overlay at the click position
+        createTextInputAt(pos);
+        // don't keep drawing mode for text
+        isDrawingRef.current = false;
+      }
+      // capture pointer
+      if (ev.pointerId && canvas.setPointerCapture) {
+        try { canvas.setPointerCapture(ev.pointerId); } catch (e) {}
+      }
+    };
+
+    const onPointerMove = (ev) => {
+      if (!isDrawingRef.current) return;
+      const pos = getEventPos(ev);
+      if (activeTool === "pen") {
+        drawLineSegment(startRef.current, pos, strokeColor || "#000", 2);
+        startRef.current = pos;
+      } else if (activeTool === "eraser") {
+        drawLineSegment(startRef.current, pos, "#ffffff", 20);
+        startRef.current = pos;
+      } else {
+        previewShape(pos);
+      }
+    };
+
+    const onPointerUp = (ev) => {
+      if (!isDrawingRef.current) return;
+      isDrawingRef.current = false;
+      const pos = getEventPos(ev);
+      const canvas = canvasRef.current, ctx = ctxRef.current;
+      if (!canvas || !ctx) return;
+
+      if (activeTool === "pen" || activeTool === "eraser") {
+        // final stroke already drawn, now push state (we already did pushUndo at pointerdown)
+        undoStack.current.push(canvas.toDataURL());
+        if (undoStack.current.length > MAX_STACK) undoStack.current.shift();
+        redoStack.current = [];
+      } else {
+        // finalize shape: restore snapshot then draw final
+        const img = new Image();
+        img.onload = () => {
+          const rect = canvas.getBoundingClientRect();
+          ctx.clearRect(0, 0, rect.width, rect.height);
+          ctx.drawImage(img, 0, 0, rect.width, rect.height);
+          drawShapeOnCtx(startRef.current, pos, activeTool, strokeColor || "#000");
+          undoStack.current.push(canvas.toDataURL());
+          if (undoStack.current.length > MAX_STACK) undoStack.current.shift();
+          redoStack.current = [];
+        };
+        img.src = snapshotRef.current;
+      }
+
+      // release pointer capture
+      if (ev.pointerId && canvas.releasePointerCapture) {
+        try { canvas.releasePointerCapture(ev.pointerId); } catch (e) {}
+      }
+    };
+
+    const onPointerCancel = (ev) => {
+      isDrawingRef.current = false;
+    };
+
+    canvas.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointercancel", onPointerCancel);
+
+    return () => {
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointercancel", onPointerCancel);
+    };
+  }, [activeTool, strokeColor]);
+
+  // helper: compute event pos mapped to canvas pixel coordinates
+  function getEventPos(e) {
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const dprX = canvas.width / rect.width;
+    const dprY = canvas.height / rect.height;
+    let clientX = e.clientX, clientY = e.clientY;
+    if (e.touches && e.touches[0]) {
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    }
+    return {
+      x: (clientX - rect.left) * dprX,
+      y: (clientY - rect.top) * dprY,
+    };
+  }
+
+  // text input overlay
+  function createTextInputAt(pos) {
+    const container = containerRef.current;
+    if (!container) return;
+    // remove existing input if any
+    if (inputRef.current) {
+      inputRef.current.remove();
+      inputRef.current = null;
+    }
+    // position in CSS coordinates
+    const rect = canvasRef.current.getBoundingClientRect();
+    const scaleX = rect.width / canvasRef.current.width;
+    const scaleY = rect.height / canvasRef.current.height;
+    const left = pos.x * scaleX + rect.left - container.getBoundingClientRect().left;
+    const top = pos.y * scaleY + rect.top - container.getBoundingClientRect().top;
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "Type and press Enter";
+    input.style.position = "absolute";
+    input.style.left = `${left}px`;
+    input.style.top = `${top}px`;
+    input.style.zIndex = 9999;
+    input.style.background = "rgba(255,255,255,0.95)";
+    input.style.color = "#000";
+    input.style.padding = "6px";
+    input.style.borderRadius = "6px";
+    input.style.border = "1px solid rgba(0,0,0,0.15)";
+    input.style.minWidth = "80px";
+
+    input.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        const textValue = input.value;
+        if (textValue.trim()) {
+          // draw text to canvas (convert pos back to canvas coordinates)
+          const canvasRect = canvasRef.current.getBoundingClientRect();
+          const dprX = canvasRef.current.width / canvasRect.width;
+          const dprY = canvasRef.current.height / canvasRect.height;
+          const cx = (left - (canvasRect.left - container.getBoundingClientRect().left)) * dprX;
+          const cy = (top - (canvasRect.top - container.getBoundingClientRect().top)) * dprY;
+          // draw
+          const ctx = ctxRef.current;
+          ctx.fillStyle = strokeColor || "#000";
+          ctx.font = "18px sans-serif";
+          ctx.fillText(textValue, cx, cy);
+          undoStack.current.push(canvasRef.current.toDataURL());
+          if (undoStack.current.length > MAX_STACK) undoStack.current.shift();
+        }
+        input.remove();
+        inputRef.current = null;
+      } else if (ev.key === "Escape") {
+        input.remove();
+        inputRef.current = null;
+      }
     });
-    loadGallery();
-  };
 
-  // --- AI Clean (placeholder) ---
-  const handleAIClean = () => {
-    ctxRef.current.clearRect(0, 0, canvasSize.w, canvasSize.h);
-    setUndoStack([]);
-    setRedoStack([]);
-  };
+    container.appendChild(input);
+    input.focus();
+    inputRef.current = input;
+  }
 
-  // --- Keyboard Shortcuts ---
+  // Exposed API
+  useImperativeHandle(ref, () => ({
+    undo: () => undo(),
+    redo: () => redo(),
+    saveToGallery: async () => {
+      try {
+        const canvas = canvasRef.current;
+        const dataUrl = canvas.toDataURL("image/png");
+        // submit to backend via api
+        const payload = { title: `Diagram ${Date.now()}`, data_json: JSON.stringify({ png: dataUrl }) };
+        await apiSaveDiagram(payload, localStorage.getItem("token"));
+        alert("Saved to gallery");
+      } catch (err) {
+        console.error("Save failed", err);
+        alert("Save failed");
+      }
+    },
+    aiClean: async () => {
+      try {
+        const dataUrl = canvasRef.current.toDataURL();
+        const blob = await (await fetch(dataUrl)).blob();
+        const fd = new FormData();
+        fd.append("image", blob, "board.png");
+        const res = await apiAiCleanup(fd, localStorage.getItem("token"));
+        if (res?.data?.cleaned_png) {
+          const img = new Image();
+          img.onload = () => {
+            const rect = canvasRef.current.getBoundingClientRect();
+            ctxRef.current.clearRect(0, 0, rect.width, rect.height);
+            ctxRef.current.drawImage(img, 0, 0, rect.width, rect.height);
+            undoStack.current.push(canvasRef.current.toDataURL());
+          };
+          img.src = res.data.cleaned_png;
+        } else {
+          alert("AI returned no image");
+        }
+      } catch (err) {
+        console.error("AI clean error", err);
+        alert("AI clean failed");
+      }
+    },
+    downloadImage: () => {
+      const a = document.createElement("a");
+      a.href = canvasRef.current.toDataURL("image/png");
+      a.download = `whiteboard-${Date.now()}.png`;
+      document.body.appendChild(a); a.click(); a.remove();
+    },
+    loadImage: (dataUrl) => {
+      const img = new Image();
+      img.onload = () => {
+        const rect = canvasRef.current.getBoundingClientRect();
+        ctxRef.current.clearRect(0, 0, rect.width, rect.height);
+        ctxRef.current.drawImage(img, 0, 0, rect.width, rect.height);
+        undoStack.current.push(canvasRef.current.toDataURL());
+      };
+      img.src = dataUrl;
+    }
+  }));
+
+  // initial draw helper to fill white background if empty
   useEffect(() => {
-    const down = (e) => {
-      if (e.ctrlKey && e.key === "z") handleUndo();
-      if (e.ctrlKey && e.key === "y") handleRedo();
-      if (e.key === "Delete") handleAIClean();
-      if (e.key === "Escape") setTool("select");
-    };
-    window.addEventListener("keydown", down);
-    return () => window.removeEventListener("keydown", down);
-  });
-
-  // --- Resize canvas when window resizes ---
-  useEffect(() => {
-    const resize = () => {
-      const w = Math.min(window.innerWidth - 300, 1200);
-      const h = Math.min(window.innerHeight - 200, 800);
-      setCanvasSize({ w, h });
-    };
-    window.addEventListener("resize", resize);
-    resize();
-    return () => window.removeEventListener("resize", resize);
+    const canvas = canvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const ctx = ctxRef.current;
+    if (canvas && ctx && undoStack.current.length === 0) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, rect.width, rect.height);
+      undoStack.current.push(canvas.toDataURL());
+    }
   }, []);
 
+  // small helper for finalizing shapes manually (if needed)
+  function finalizeCurrentShape(endPos) {
+    // used elsewhere; not required here
+  }
+
   return (
-    <div className="board">
-      <div className="canvas-area">
+    <div ref={containerRef} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 12, position: "relative" }}>
+      <div style={{ width: "100%", maxWidth: 1100, height: 680, background: "transparent" }}>
         <canvas
           ref={canvasRef}
-          className="canvas"
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
+          style={{ width: "100%", height: "100%", display: "block", borderRadius: 8, background: "#fff", border: "1px solid rgba(0,0,0,0.06)" }}
         />
-      </div>
-
-      <div className="right-panel">
-        <h3>Gallery</h3>
-        <button onClick={loadGallery}>Refresh</button>
-        <ul>
-          {gallery.map((item) => (
-            <li key={item.id}>
-              <img src={item.data_json} alt={item.title} width="80" />
-              <button onClick={() => handleDelete(item.id)}>❌</button>
-            </li>
-          ))}
-        </ul>
       </div>
     </div>
   );
-}
+});
+
+export default CanvasBoard;

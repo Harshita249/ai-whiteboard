@@ -1,27 +1,37 @@
 import axios from "axios";
 
-const BACKEND = import.meta.env.VITE_BACKEND_URL || "";
-const BASE = BACKEND ? `${BACKEND.replace(/\/$/, "")}/api` : "/api";
-
+const BASE = import.meta.env.VITE_BACKEND_URL || ""; // set to "https://your-backend" in production if needed
 const api = axios.create({ baseURL: BASE, timeout: 20000 });
 
 // Auth
-export async function register(username, password) { return api.post("/register", { username, password }); }
-export async function login(username, password) { return api.post("/login", { username, password }); }
-
-// Gallery
-export async function listGallery() { return api.get("/gallery/"); }
-export async function saveGalleryItem(payload, token) {
-  return api.post("/gallery/", payload, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+export function register(username, password) {
+  return api.post("/api/register", { username, password });
 }
-export async function deleteGalleryItem(id, token) {
-  return api.delete(`/gallery/${id}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+export function login(username, password) {
+  return api.post("/api/login", { username, password });
 }
-export async function getGalleryItem(id) { return api.get(`/gallery/${id}`); }
 
-// AI
-export async function aiCleanup(formData, token) {
-  return api.post("/ai/cleanup", formData, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+// Gallery/diagrams
+export function saveDiagram(payload, token) {
+  // payload = { title, data_json } (data_json should be stringified JSON if needed)
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  return api.post("/api/gallery", payload, { headers });
+}
+export function listGallery() {
+  return api.get("/api/gallery/");
+}
+export function getDiagram(id) {
+  return api.get(`/api/gallery/${id}`);
+}
+export function deleteDiagram(id, token) {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  return api.delete(`/api/gallery/${id}`, { headers });
+}
+
+// AI cleanup (expects multipart/form-data)
+export function aiCleanup(formData, token) {
+  const headers = token ? { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" } : { "Content-Type": "multipart/form-data" };
+  return api.post("/api/ai/cleanup", formData, { headers });
 }
 
 export default api;
