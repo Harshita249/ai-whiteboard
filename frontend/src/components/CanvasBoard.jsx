@@ -461,6 +461,20 @@ export default function CanvasBoard() {
           z-index: 9999;
           font-size: 13px;
         }
+          .main-canvas, .overlay-canvas {
+          display: block;
+          width: 100%;
+          height: 100%;
+     }
+
+         .overlay-canvas {
+         position: absolute;
+         left: 0;
+         top: 0;
+        pointer-events: none;
+        z-index: 2; /* ensure it is above the main canvas */
+     }
+
       `}</style>
     </>
   );
