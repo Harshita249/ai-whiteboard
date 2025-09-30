@@ -1,30 +1,94 @@
-:root{
-  --bg:#071026;
-  --white:#eef2ff;
-  --accent:#6ee7b7;
-  --panel: rgba(255,255,255,0.03);
+:root {
+  --bg: #071026;
+  --panel: rgba(255,255,255,0.02);
+  --white: #eef2ff;
+  --accent: #6ee7b7;
+  --dark: #0b2136;
 }
-*{box-sizing:border-box;margin:0;padding:0;font-family:Inter,system-ui,Arial}
-body{background:linear-gradient(180deg,#071025,#07163a);min-height:100vh;color:var(--white);display:flex;align-items:center;justify-content:center;padding:20px}
-.app{width:100%;max-width:1400px;background:rgba(255,255,255,0.02);padding:12px;border-radius:12px}
-.toolbar-top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px;background:var(--panel);border-radius:8px;margin-bottom:12px}
-.workspace-row{display:flex;gap:12px;align-items:flex-start}
-.toolbar-side{width:84px;background:var(--panel);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:10px;align-items:center}
-.board-column{flex:1;display:flex;justify-content:center;align-items:center}
-.right-column{width:300px;background:var(--panel);border-radius:10px;padding:10px;max-height:720px;overflow:auto}
-.board-wrap{width:100%;height:100%}
-.canvas-area{display:flex;align-items:center;justify-content:center}
-.tool-btn{position:relative;background:#0f1724;border:none;color:#fff;border-radius:8px;padding:8px;cursor:pointer;width:44px;height:44px;display:flex;align-items:center;justify-content:center}
-.tool-btn:hover{transform:translateY(-3px);background:#172134}
-.tool-btn.active{background:linear-gradient(90deg,#2563eb,#7c3aed)}
-.tool-btn .tooltip-text{visibility:hidden;position:absolute;bottom:120%;left:50%;transform:translateX(-50%);background:#0b1220;padding:6px;border-radius:6px;font-size:12px;opacity:0;transition:opacity .12s}
-.tool-btn:hover .tooltip-text{visibility:visible;opacity:1}
-.color-input{width:44px;height:44px;border-radius:8px;border:none;padding:0}
-.board{width:1000px;height:680px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 12px 40px rgba(2,6,23,0.6)}
-.small{font-size:12px;color:#94a3b8}
-@media (max-width:980px){
-  .workspace-row{flex-direction:column}
-  .toolbar-side{width:100%;flex-direction:row;overflow-x:auto}
-  .right-column{width:100%}
-  .board{width:100%;height:420px}
+
+/* global layout */
+body {
+  margin: 0;
+  font-family: Inter, system-ui, Arial, sans-serif;
+  background: linear-gradient(180deg,#071025,#07163a);
+  color: var(--white);
+  min-height: 100vh;
+}
+
+/* toolbar top */
+.toolbar.top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.02);
+}
+
+/* toolbar side */
+.toolbar.side {
+  position: absolute;
+  left: 18px;
+  top: 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: rgba(255,255,255,0.02);
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(2,6,23,0.5);
+}
+
+.tool-btn {
+  width: 52px;
+  height: 44px;
+  background: #0f1724;
+  border-radius: 10px;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--white);
+  transition: transform .08s ease;
+}
+.tool-btn:hover { transform: translateY(-3px); }
+.tool-btn:active { transform: translateY(0); }
+
+.mini-btn {
+  background: rgba(255,255,255,0.03);
+  color: var(--white);
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: none;
+}
+
+.color-input {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+}
+
+/* separators & gallery */
+.separator {
+  width: 36px;
+  height: 1px;
+  background: rgba(255,255,255,0.04);
+  margin: 8px 0;
+}
+
+/* gallery right panel - overridden in CanvasBoard styles */
+
+@media (max-width: 900px) {
+  .toolbar.side {
+    left: 10px;
+    top: 86px;
+    transform: none;
+    flex-direction: row;
+    padding: 6px;
+    width: calc(100% - 40px);
+    justify-content: center;
+  }
 }

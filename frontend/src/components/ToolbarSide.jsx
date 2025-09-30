@@ -1,28 +1,84 @@
 import React from "react";
 
-function ToolBtn({ active, title, onClick, children }) {
+/*
+  ToolbarSide dispatches:
+   - "tool-change" { tool: 'pen'|'eraser'|'rect'|'ellipse'|'line'|'arrow'|'text'|'select' }
+   - "action" { name: 'undo'|'redo'|'save'|'download'|'aiClean' }
+   - "tooltip-show" { text, x, y } and "tooltip-hide"
+*/
+
+function emit(name, detail = {}) {
+  window.dispatchEvent(new CustomEvent(name, { detail }));
+}
+
+function Tool({ tool, emoji, title }) {
+  const onClick = () => emit("tool-change", { tool });
+  const onEnter = (e) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    emit("tooltip-show", { text: title, x: r.left + r.width / 2, y: r.top });
+  };
+  const onLeave = () => emit("tooltip-hide");
   return (
-    <button className={`tool-btn side-btn ${active ? "active" : ""}`} title={title} onClick={onClick}>
-      {children}
-      <span className="tooltip-text">{title}</span>
+    <button
+      className="tool-btn"
+      onClick={onClick}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
+      onTouchStart={() => emit("tooltip-show", { text: title })}
+      onTouchEnd={() => emit("tooltip-hide")}
+      aria-label={title}
+    >
+      <div style={{ fontSize: 18 }}>{emoji}</div>
     </button>
   );
 }
 
-export default function ToolbarSide({ activeTool, setActiveTool, setColor }) {
+export default function ToolbarSide() {
   return (
-    <div className="toolbar-side">
-      <ToolBtn active={activeTool === "pen"} title="Pen" onClick={() => setActiveTool("pen")}>✏️</ToolBtn>
-      <ToolBtn active={activeTool === "eraser"} title="Eraser" onClick={() => setActiveTool("eraser")}>🧽</ToolBtn>
-      <ToolBtn active={activeTool === "select"} title="Select" onClick={() => setActiveTool("select")}>🔲</ToolBtn>
-
-      <hr style={{ width: "70%", opacity: 0.12 }} />
-
-      <ToolBtn active={activeTool === "rect"} title="Rectangle" onClick={() => setActiveTool("rect")}>▭</ToolBtn>
-      <ToolBtn active={activeTool === "ellipse"} title="Ellipse" onClick={() => setActiveTool("ellipse")}>◯</ToolBtn>
-      <ToolBtn active={activeTool === "line"} title="Line" onClick={() => setActiveTool("line")}>—</ToolBtn>
-      <ToolBtn active={activeTool === "arrow"} title="Arrow" onClick={() => setActiveTool("arrow")}>➤</ToolBtn>
-      <ToolBtn active={activeTool === "text"} title="Text" onClick={() => setActiveTool("text")}>🔤</ToolBtn>
+    <div className="toolbar side">
+      <Tool tool="pen" emoji="✏️" title="Pen" />
+      <Tool tool="eraser" emoji="🧽" title="Eraser" />
+      <div className="separator" />
+      <Tool tool="rect" emoji="▭" title="Rectangle" />
+      <Tool tool="ellipse" emoji="◯" title="Ellipse" />
+      <Tool tool="line" emoji="—" title="Line" />
+      <Tool tool="arrow" emoji="➤" title="Arrow" />
+      <div className="separator" />
+      <Tool tool="text" emoji="A" title="Text" />
+      <div style={{ height: 8 }} />
+      <button
+        className="tool-btn"
+        onClick={() => emit("action", { name: "undo" })}
+        onMouseEnter={(e) => emit("tooltip-show", { text: "Undo", x: e.currentTarget.getBoundingClientRect().left })}
+        onMouseLeave={() => emit("tooltip-hide")}
+      >
+        ↶
+      </button>
+      <button
+        className="tool-btn"
+        onClick={() => emit("action", { name: "redo" })}
+        onMouseEnter={(e) => emit("tooltip-show", { text: "Redo", x: e.currentTarget.getBoundingClientRect().left })}
+        onMouseLeave={() => emit("tooltip-hide")}
+      >
+        ↷
+      </button>
+      <div style={{ flex: 1 }} />
+      <button
+        className="tool-btn"
+        onClick={() => emit("action", { name: "save" })}
+        onMouseEnter={(e) => emit("tooltip-show", { text: "Save to gallery", x: e.currentTarget.getBoundingClientRect().left })}
+        onMouseLeave={() => emit("tooltip-hide")}
+      >
+        💾
+      </button>
+      <button
+        className="tool-btn"
+        onClick={() => emit("action", { name: "download" })}
+        onMouseEnter={(e) => emit("tooltip-show", { text: "Download PNG", x: e.currentTarget.getBoundingClientRect().left })}
+        onMouseLeave={() => emit("tooltip-hide")}
+      >
+        ⤓
+      </button>
     </div>
   );
 }
