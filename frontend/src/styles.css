@@ -27,9 +27,9 @@ body {
 
 /* toolbar side */
 .toolbar.side {
-  position: absolute;
+  position: fixed;   /* use fixed so it stays left */
   left: 18px;
-  top: 110px;
+  top: 120px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -37,7 +37,10 @@ body {
   background: rgba(255,255,255,0.02);
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(2,6,23,0.5);
+  z-index: 2000;   /* ensure above canvas */
+  height: auto;
 }
+
 
 .tool-btn {
   width: 52px;
