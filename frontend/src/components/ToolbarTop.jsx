@@ -1,38 +1,37 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
+
+/*
+ ToolbarTop.jsx
+ - Displays active tool and color picker.
+ - Emits "color-change" when user picks a color.
+ - Shows an AI button that triggers "action" event.
+*/
 
 function emit(name, detail = {}) {
   window.dispatchEvent(new CustomEvent(name, { detail }));
 }
 
-/* Small color picker + active tool label */
 export default function ToolbarTop() {
-  const [color, setColor] = useState("#000000");
   const [active, setActive] = useState("pen");
+  const [color, setColor] = useState("#000000");
 
   useEffect(() => {
     const onTool = (e) => setActive(e.detail.tool);
-    const onColor = (e) => setColor(e.detail.color);
     window.addEventListener("tool-change", onTool);
-    window.addEventListener("color-change", onColor);
-    return () => {
-      window.removeEventListener("tool-change", onTool);
-      window.removeEventListener("color-change", onColor);
-    };
+    return () => window.removeEventListener("tool-change", onTool);
   }, []);
 
-  const onColorChange = (ev) => {
-    const c = ev.target.value;
+  const onColor = (e) => {
+    const c = e.target.value;
     setColor(c);
     emit("color-change", { color: c });
   };
 
   return (
-    <div className="toolbar top">
+    <div className="toolbar-top">
       <div className="active-tool-label">Tool: <strong>{active}</strong></div>
-      <div style={{ marginLeft: 12 }}>
-        <input type="color" value={color} onChange={onColorChange} className="color-input" />
-      </div>
-      <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+      <input type="color" className="color-input" value={color} onChange={onColor} />
+      <div style={{ marginLeft: "auto" }}>
         <button className="mini-btn" onClick={() => emit("action", { name: "aiClean" })}>🤖 AI</button>
       </div>
     </div>
