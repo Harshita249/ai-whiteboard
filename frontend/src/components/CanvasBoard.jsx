@@ -1,71 +1,76 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
 import { saveAs } from "file-saver";
 
-const CanvasBoard = ({ tool, color, onSaveToGallery, onAiClean }) => {
+export default function CanvasBoard() {
   const canvasRef = useRef(null);
-  const overlayRef = useRef(null);
-
+  const previewRef = useRef(null);
   const [ctx, setCtx] = useState(null);
-  const [overlayCtx, setOverlayCtx] = useState(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [startPos, setStartPos] = useState(null);
+  const [previewCtx, setPreviewCtx] = useState(null);
 
-  // Undo/Redo stack
-  const [undoStack, setUndoStack] = useState([]);
+  const [tool, setTool] = useState("pen");
+  const [color, setColor] = useState("#000000");
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [start, setStart] = useState(null);
+
+  // Undo/redo stack
+  const [history, setHistory] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
 
+  // Gallery
+  const [gallery, setGallery] = useState([]);
+
+  // Resize canvas
   useEffect(() => {
-    const c = canvasRef.current;
-    const o = overlayRef.current;
-    if (c && o) {
-      c.width = c.offsetWidth;
-      c.height = c.offsetHeight;
-      o.width = o.offsetWidth;
-      o.height = o.offsetHeight;
-      setCtx(c.getContext("2d"));
-      setOverlayCtx(o.getContext("2d"));
-    }
+    const canvas = canvasRef.current;
+    const preview = previewRef.current;
+    if (!canvas || !preview) return;
+
+    const resize = () => {
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      preview.width = rect.width;
+      preview.height = rect.height;
+      setCtx(canvas.getContext("2d"));
+      setPreviewCtx(preview.getContext("2d"));
+    };
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
   }, []);
 
-  // Save snapshot for undo
-  const pushToUndo = () => {
-    if (!ctx) return;
-    const data = canvasRef.current.toDataURL();
-    setUndoStack((prev) => [...prev, data]);
-    setRedoStack([]); // clear redo
-  };
-
-  // Undo action
-  const handleUndo = () => {
-    if (!undoStack.length) return;
-    const prev = [...undoStack];
-    const last = prev.pop();
-    setUndoStack(prev);
-    setRedoStack((r) => [...r, canvasRef.current.toDataURL()]);
-    restoreImage(last);
-  };
-
-  // Redo action
-  const handleRedo = () => {
-    if (!redoStack.length) return;
-    const next = [...redoStack];
-    const last = next.pop();
-    setRedoStack(next);
-    setUndoStack((u) => [...u, canvasRef.current.toDataURL()]);
-    restoreImage(last);
-  };
-
-  const restoreImage = (src) => {
-    const img = new Image();
-    img.onload = () => {
-      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
-      ctx.drawImage(img, 0, 0);
+  // Toolbar event listeners
+  useEffect(() => {
+    const handleTool = (e) => setTool(e.detail.tool);
+    const handleColor = (e) => setColor(e.detail.color);
+    const handleAction = (e) => {
+      if (e.detail.name === "undo") undo();
+      if (e.detail.name === "redo") redo();
+      if (e.detail.name === "save") saveToGallery();
+      if (e.detail.name === "download") download();
+      if (e.detail.name === "aiClean") aiClean();
     };
-    img.src = src;
-  };
+    window.addEventListener("tool-change", handleTool);
+    window.addEventListener("color-change", handleColor);
+    window.addEventListener("action", handleAction);
+    return () => {
+      window.removeEventListener("tool-change", handleTool);
+      window.removeEventListener("color-change", handleColor);
+      window.removeEventListener("action", handleAction);
+    };
+  }, [ctx, tool]);
 
-  // Pointer handlers
-  const getPos = (e) => {
+  // Keyboard shortcuts
+  useEffect(() => {
+    const kb = (e) => {
+      if (e.ctrlKey && e.key === "z") undo();
+      if (e.ctrlKey && e.key === "y") redo();
+    };
+    window.addEventListener("keydown", kb);
+    return () => window.removeEventListener("keydown", kb);
+  }, [history, redoStack]);
+
+  const getMousePos = (e) => {
     const rect = canvasRef.current.getBoundingClientRect();
     return {
       x: e.clientX - rect.left,
@@ -73,123 +78,193 @@ const CanvasBoard = ({ tool, color, onSaveToGallery, onAiClean }) => {
     };
   };
 
-  const handlePointerDown = (e) => {
-    if (!ctx) return;
+  // Start drawing
+  const handleMouseDown = (e) => {
+    const pos = getMousePos(e);
     setIsDrawing(true);
-    const pos = getPos(e);
-    setStartPos(pos);
+    setStart(pos);
 
     if (tool === "pen" || tool === "eraser") {
-      pushToUndo();
       ctx.beginPath();
       ctx.moveTo(pos.x, pos.y);
+      ctx.strokeStyle = tool === "eraser" ? "#ffffff" : color;
+      ctx.lineWidth = tool === "eraser" ? 20 : 2;
     }
   };
 
-  const handlePointerMove = (e) => {
-    if (!isDrawing || !ctx) return;
-    const pos = getPos(e);
+  // Drawing / preview shapes
+  const handleMouseMove = (e) => {
+    if (!isDrawing) return;
+    const pos = getMousePos(e);
 
-    if (tool === "pen") {
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
+    if (tool === "pen" || tool === "eraser") {
       ctx.lineTo(pos.x, pos.y);
       ctx.stroke();
-    } else if (tool === "eraser") {
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 20;
-      ctx.lineTo(pos.x, pos.y);
-      ctx.stroke();
-    } else if (["rect", "circle", "line", "triangle"].includes(tool)) {
-      if (!overlayCtx || !startPos) return;
-      overlayCtx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
-      overlayCtx.strokeStyle = color;
-      overlayCtx.lineWidth = 2;
-      overlayCtx.beginPath();
+    } else {
+      // Preview shapes
+      previewCtx.clearRect(0, 0, previewRef.current.width, previewRef.current.height);
+      previewCtx.strokeStyle = color;
+      previewCtx.lineWidth = 2;
 
       if (tool === "rect") {
-        overlayCtx.rect(pos.x - startPos.x, pos.y - startPos.y, startPos.x, startPos.y);
-      } else if (tool === "circle") {
-        const r = Math.sqrt(
-          Math.pow(pos.x - startPos.x, 2) + Math.pow(pos.y - startPos.y, 2)
-        );
-        overlayCtx.arc(startPos.x, startPos.y, r, 0, 2 * Math.PI);
-      } else if (tool === "line") {
-        overlayCtx.moveTo(startPos.x, startPos.y);
-        overlayCtx.lineTo(pos.x, pos.y);
-      } else if (tool === "triangle") {
-        overlayCtx.moveTo(startPos.x, pos.y);
-        overlayCtx.lineTo((startPos.x + pos.x) / 2, startPos.y);
-        overlayCtx.lineTo(pos.x, pos.y);
-        overlayCtx.closePath();
+        previewCtx.strokeRect(start.x, start.y, pos.x - start.x, pos.y - start.y);
       }
-      overlayCtx.stroke();
+      if (tool === "circle") {
+        const r = Math.sqrt((pos.x - start.x) ** 2 + (pos.y - start.y) ** 2);
+        previewCtx.beginPath();
+        previewCtx.arc(start.x, start.y, r, 0, Math.PI * 2);
+        previewCtx.stroke();
+      }
+      if (tool === "line") {
+        previewCtx.beginPath();
+        previewCtx.moveTo(start.x, start.y);
+        previewCtx.lineTo(pos.x, pos.y);
+        previewCtx.stroke();
+      }
+      if (tool === "arrow") {
+        drawArrow(previewCtx, start, pos, color);
+      }
     }
   };
 
-  const handlePointerUp = (e) => {
-    if (!ctx || !isDrawing) return;
+  // Finish drawing
+  const handleMouseUp = (e) => {
+    if (!isDrawing) return;
+    const pos = getMousePos(e);
     setIsDrawing(false);
 
-    if (["rect", "circle", "line", "triangle"].includes(tool) && startPos) {
-      pushToUndo();
-      const pos = getPos(e);
+    if (tool === "rect" || tool === "circle" || tool === "line" || tool === "arrow") {
+      previewCtx.clearRect(0, 0, previewRef.current.width, previewRef.current.height);
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
-      ctx.beginPath();
 
       if (tool === "rect") {
-        ctx.strokeRect(startPos.x, startPos.y, pos.x - startPos.x, pos.y - startPos.y);
-      } else if (tool === "circle") {
-        const r = Math.sqrt(
-          Math.pow(pos.x - startPos.x, 2) + Math.pow(pos.y - startPos.y, 2)
-        );
-        ctx.arc(startPos.x, startPos.y, r, 0, 2 * Math.PI);
-        ctx.stroke();
-      } else if (tool === "line") {
-        ctx.moveTo(startPos.x, startPos.y);
-        ctx.lineTo(pos.x, pos.y);
-        ctx.stroke();
-      } else if (tool === "triangle") {
-        ctx.moveTo(startPos.x, pos.y);
-        ctx.lineTo((startPos.x + pos.x) / 2, startPos.y);
-        ctx.lineTo(pos.x, pos.y);
-        ctx.closePath();
+        ctx.strokeRect(start.x, start.y, pos.x - start.x, pos.y - start.y);
+      }
+      if (tool === "circle") {
+        const r = Math.sqrt((pos.x - start.x) ** 2 + (pos.y - start.y) ** 2);
+        ctx.beginPath();
+        ctx.arc(start.x, start.y, r, 0, Math.PI * 2);
         ctx.stroke();
       }
-      overlayCtx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height);
+      if (tool === "line") {
+        ctx.beginPath();
+        ctx.moveTo(start.x, start.y);
+        ctx.lineTo(pos.x, pos.y);
+        ctx.stroke();
+      }
+      if (tool === "arrow") {
+        drawArrow(ctx, start, pos, color);
+      }
     }
 
-    setStartPos(null);
+    if (tool === "text") {
+      const text = prompt("Enter text:");
+      if (text) {
+        ctx.fillStyle = color;
+        ctx.font = "20px Arial";
+        ctx.fillText(text, pos.x, pos.y);
+      }
+    }
+
+    // Save snapshot to history
+    saveState();
   };
 
-  // Save to Gallery
-  const handleSave = () => {
-    const data = canvasRef.current.toDataURL("image/png");
-    onSaveToGallery(data);
+  // Arrow drawing helper
+  const drawArrow = (context, from, to, strokeStyle) => {
+    const headlen = 10;
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const angle = Math.atan2(dy, dx);
+
+    context.beginPath();
+    context.moveTo(from.x, from.y);
+    context.lineTo(to.x, to.y);
+    context.strokeStyle = strokeStyle;
+    context.stroke();
+
+    context.beginPath();
+    context.moveTo(to.x, to.y);
+    context.lineTo(to.x - headlen * Math.cos(angle - Math.PI / 6), to.y - headlen * Math.sin(angle - Math.PI / 6));
+    context.lineTo(to.x - headlen * Math.cos(angle + Math.PI / 6), to.y - headlen * Math.sin(angle + Math.PI / 6));
+    context.lineTo(to.x, to.y);
+    context.fillStyle = strokeStyle;
+    context.fill();
   };
 
-  // Download as PNG
-  const handleDownload = () => {
-    const data = canvasRef.current.toDataURL("image/png");
-    saveAs(data, "whiteboard.png");
+  // Undo/redo
+  const saveState = () => {
+    const data = canvasRef.current.toDataURL();
+    setHistory((h) => [...h, data]);
+    setRedoStack([]);
+  };
+
+  const undo = () => {
+    if (history.length === 0) return;
+    const prev = [...history];
+    const last = prev.pop();
+    setRedoStack((r) => [...r, last]);
+    setHistory(prev);
+    restore(prev[prev.length - 1]);
+  };
+
+  const redo = () => {
+    if (redoStack.length === 0) return;
+    const next = [...redoStack];
+    const last = next.pop();
+    setRedoStack(next);
+    setHistory((h) => [...h, last]);
+    restore(last);
+  };
+
+  const restore = (dataUrl) => {
+    const img = new Image();
+    img.src = dataUrl;
+    img.onload = () => {
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+      ctx.drawImage(img, 0, 0);
+    };
+  };
+
+  // Save to gallery (backend)
+  const saveToGallery = async () => {
+    const dataUrl = canvasRef.current.toDataURL("image/png");
+    setGallery([...gallery, dataUrl]);
+
+    try {
+      await fetch("/api/gallery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: `Sketch ${Date.now()}`, data_json: dataUrl }),
+      });
+    } catch (err) {
+      console.error("Gallery save failed", err);
+    }
+  };
+
+  // Download PNG
+  const download = () => {
+    const dataUrl = canvasRef.current.toDataURL("image/png");
+    saveAs(dataUrl, "whiteboard.png");
+  };
+
+  // AI Clean (stub)
+  const aiClean = async () => {
+    alert("AI Clean triggered (backend not yet implemented).");
   };
 
   return (
-    <div className="board-wrapper">
-      <div className="toolbar-top">
-        <button onClick={handleUndo}>⎌ Undo</button>
-        <button onClick={handleRedo}>↻ Redo</button>
-        <button onClick={handleSave}>💾 Save</button>
-        <button onClick={onAiClean}>🤖 AI Clean</button>
-        <button onClick={handleDownload}>⬇ Download</button>
-      </div>
-      <div className="board-canvas-area">
-        <canvas ref={canvasRef} className="main-canvas" />
-        <canvas ref={overlayRef} className="overlay-canvas" />
+    <div className="board">
+      <div className="canvas-area">
+        <canvas
+          ref={canvasRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+        />
+        <canvas ref={previewRef} />
       </div>
     </div>
   );
-};
-
-export default CanvasBoard;
+}
