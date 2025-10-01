@@ -1,97 +1,51 @@
-:root {
-  --bg: #071026;
-  --panel: rgba(255,255,255,0.02);
-  --white: #eef2ff;
-  --accent: #6ee7b7;
-  --dark: #0b2136;
-}
-
-/* global layout */
-body {
-  margin: 0;
-  font-family: Inter, system-ui, Arial, sans-serif;
-  background: linear-gradient(180deg,#071025,#07163a);
-  color: var(--white);
-  min-height: 100vh;
-}
-
-/* toolbar top */
-.toolbar.top {
+/* Canvas area */
+.board-wrapper {
+  flex: 1;
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  background: rgba(255,255,255,0.03);
-  border-bottom: 1px solid rgba(255,255,255,0.02);
+  flex-direction: column;
+  height: 100%;
 }
 
-/* toolbar side */
+.board-canvas-area {
+  position: relative;
+  flex: 1;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.main-canvas, .overlay-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.overlay-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+/* Toolbars */
+.toolbar-top {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
 .toolbar.side {
-  position: fixed;   /* use fixed so it stays left */
+  position: fixed;
   left: 18px;
   top: 120px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 8px;
-  background: rgba(255,255,255,0.02);
+  gap: 10px;
+  padding: 10px;
+  background: rgba(255,255,255,0.05);
   border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(2,6,23,0.5);
-  z-index: 2000;   /* ensure above canvas */
-  height: auto;
-}
-
-
-.tool-btn {
-  width: 52px;
-  height: 44px;
-  background: #0f1724;
-  border-radius: 10px;
-  border: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: var(--white);
-  transition: transform .08s ease;
-}
-.tool-btn:hover { transform: translateY(-3px); }
-.tool-btn:active { transform: translateY(0); }
-
-.mini-btn {
-  background: rgba(255,255,255,0.03);
-  color: var(--white);
-  padding: 6px 10px;
-  border-radius: 8px;
-  border: none;
-}
-
-.color-input {
-  width: 36px;
-  height: 36px;
-  border-radius: 6px;
-  border: none;
-  cursor: pointer;
-}
-
-/* separators & gallery */
-.separator {
-  width: 36px;
-  height: 1px;
-  background: rgba(255,255,255,0.04);
-  margin: 8px 0;
-}
-
-/* gallery right panel - overridden in CanvasBoard styles */
-
-@media (max-width: 900px) {
-  .toolbar.side {
-    left: 10px;
-    top: 86px;
-    transform: none;
-    flex-direction: row;
-    padding: 6px;
-    width: calc(100% - 40px);
-    justify-content: center;
-  }
+  box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+  z-index: 2000;
 }
