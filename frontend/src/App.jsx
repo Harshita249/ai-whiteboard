@@ -3,6 +3,7 @@ import ToolbarTop from "./components/ToolbarTop";
 import ToolbarSide from "./components/ToolbarSide";
 import CanvasBoard from "./components/CanvasBoard";
 import Gallery from "./components/Gallery";
+import "./styles.css";
 
 export default function App() {
   const boardRef = useRef(null);
